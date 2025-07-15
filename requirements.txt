@@ -1,0 +1,18 @@
+# FastAPI and Web Server
+fastapi
+uvicorn
+
+# Google ADK and Generative AI
+google-cloud-aiplatform
+google-generativeai
+google-adk
+
+# Playwright for browser automation
+playwright
+
+# Environment and Utilities
+python-dotenv
+pydantic
+
+# Add any other specific libraries your agents might need
+# e.g., pandas if you plan to do data manipulation
