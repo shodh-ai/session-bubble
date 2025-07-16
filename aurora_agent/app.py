@@ -173,6 +173,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/test/screenshot")
+async def test_screenshot():
+    try:
+        screenshot_path = await browser_manager.get_screenshot()
+        if os.path.exists(screenshot_path):
+            return FileResponse(screenshot_path)
+        else:
+            return {"error": "Screenshot file not found."}
+    except Exception as e:
+        return {"error": f"Failed to get screenshot: {e}"}
+
+@app.get("/test/navigate")
+async def test_navigate(url: str):
+    try:
+        result = await browser_manager.navigate(url)
+        return {"status": result}
+    except Exception as e:
+        return {"error": f"Failed to navigate: {e}"}
+
 if __name__ == "__main__":
     import uvicorn
     # Run the FastAPI application
