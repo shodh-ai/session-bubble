@@ -43,27 +43,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean up apt-get cache
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright browsers and their dependencies as root
-# This ensures system-level dependencies are in place before switching to a non-root user.
+# Install system dependencies for Playwright Chromium as root
 RUN pip install playwright==1.44.0 && \
-    playwright install --with-deps webkit && \
+    playwright install-deps chromium && \
     pip uninstall -y playwright
 
-# Create a non-root user for better security
+# Create a non-root user and switch to it
 RUN useradd -ms /bin/bash appuser && chown -R appuser:appuser /home/appuser
+
 WORKDIR /home/appuser/app
+
+USER appuser
 
 # Add the user's local bin to the PATH and set the PYTHONPATH
 ENV PATH="/home/appuser/.local/bin:${PATH}" \
     PYTHONPATH="/home/appuser/app:/home/appuser/app/aurora_agent"
 
-# Copy only the requirements file first to leverage Docker cache
+# Copy and install dependencies as the non-root user
 COPY --chown=appuser:appuser requirements.txt .
-
-# Install Python dependencies for the appuser
-# Playwright was already installed as part of requirements.txt, 
-# and the browser binaries are already in the system cache.
 RUN pip install -r requirements.txt
+
+# Now that Playwright is installed, install the browser binaries
+RUN playwright install chromium
 
 # Copy the rest of the application code
 COPY --chown=appuser:appuser . .
@@ -71,6 +72,9 @@ COPY --chown=appuser:appuser . .
 # Expose the ports for the FastAPI app and KasmVNC
 EXPOSE 8000
 EXPOSE 6901
+
+# Switch back to root to allow the entrypoint script to run with sudo-like privileges
+USER root
 
 # Use tini as the main entrypoint to manage processes correctly
 ENTRYPOINT ["/usr/bin/tini", "--", "./entrypoint.sh"]
