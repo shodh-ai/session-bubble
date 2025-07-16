@@ -1,147 +1,82 @@
+# in aurora_agent/browser_manager.py (CORRECTED AND FINAL VERSION)
 import asyncio
 import traceback
+import logging
 from playwright.async_api import async_playwright
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 class BrowserManager:
     def __init__(self):
-        self.browser = None
-        # The URL the browser is currently supposed to be on.
-        self.current_url = "https://www.google.com"
-        self.last_sent_screenshot_bytes: bytes | None = None
+        self.playwright_instance = None
+        self.browser_instance = None
+        self.last_sent_screenshot_bytes: Optional[bytes] = None
 
     async def start_browser(self):
-        p = await async_playwright().start()
-        self.browser = await p.chromium.launch(headless=False)
+        if self.browser_instance:
+            logger.info("Browser is already running.")
+            return
+
+        logger.info("Initializing Playwright and launching browser...")
+        try:
+            self.playwright_instance = await async_playwright().start()
+            self.browser_instance = await self.playwright_instance.chromium.launch(headless=False)
+            logger.info("Browser started successfully.")
+        except Exception as e:
+            logger.error(f"CRITICAL: An unexpected error occurred during browser startup: {e}", exc_info=True)
+            await self.close_browser()
+            raise
 
     async def close_browser(self):
-        if self.browser:
-            await self.browser.close()
+        if self.browser_instance:
+            await self.browser_instance.close()
+            logger.info("Browser instance closed.")
+        if self.playwright_instance:
+            await self.playwright_instance.stop()
+            logger.info("Playwright instance stopped.")
 
-    async def navigate(self, url):
-        # This function now only updates the target URL.
-        # The actual navigation will happen in get_screenshot or other actions.
-        self.current_url = url
-
-    async def get_screenshot(self):
-        if not self.browser:
-            return None
-        
-        page = await self.browser.new_page()
+    async def execute_interaction(self, url: str, interaction_code: str):
+        """Creates a new page, navigates, and executes the interaction code."""
+        if not self.browser_instance:
+            return "Browser not started."
+            
+        page = await self.browser_instance.new_page()
+        logger.info(f"Executing interaction on new page at URL: {url}")
         try:
-            # Navigate to the current URL and wait for the page to load.
-            await page.goto(self.current_url, wait_until="networkidle", timeout=60000)
-            screenshot_data = await page.screenshot(type="jpeg", quality=70)
-            self.last_sent_screenshot_bytes = screenshot_data
-            return screenshot_data
+            await page.goto(url, wait_until="networkidle")
+            
+            # This is where you would inject your annotation helpers
+            from .ui_tools.annotation_helpers import highlight_element, remove_annotations
+            
+            exec_scope = {
+                'page': page, 
+                'asyncio': asyncio,
+                'highlight_element': highlight_element,
+                'remove_highlights': remove_annotations,
+            }
+            
+            code_to_exec = f"async def __interaction():\n" + "".join(f"    {line}\n" for line in interaction_code.splitlines())
+            
+            exec(code_to_exec, exec_scope)
+            interaction_func = exec_scope['__interaction']
+            await interaction_func()
+            
+            # Take a final screenshot after the interaction
+            self.last_sent_screenshot_bytes = await page.screenshot(type="jpeg", quality=70)
+            
+            return "Interaction executed successfully."
+        except Exception as e:
+            error_msg = f"An error occurred during interaction: {traceback.format_exc()}"
+            logger.error(error_msg)
+            return error_msg
         finally:
             await page.close()
 
+    # NOTE: The browser_manager no longer needs get_elements_info or navigate.
+    # Those tasks are now handled by the agent's internal logic, which generates
+    # Playwright code that is then executed by execute_interaction.
+    # The agent gets its visual context from the screenshot.
 
-    async def get_elements_info(self, selector: str = None, limit: int = None) -> str:
-        """Returns information about interactive elements on the current page, optionally filtered by a Playwright selector.
-
-        Args:
-            selector (str, optional): A Playwright selector string (e.g., 'button', 'input[type="text"]', 'div.some-class'). If provided, only elements matching this selector will be returned. Defaults to None.
-            limit (int, optional): The maximum number of elements to return. If provided, the function will return at most this many elements. Defaults to None.
-        """
-        if not self.page:
-            return "Browser not initialized."
-
-        elements_info = []
-        # Define common interactive elements and their attributes
-        selectors = [
-            "button", "a", "input", "textarea", "select",
-            "[role='button']", "[role='link']", "[role='textbox']",
-            "[aria-label]", "[placeholder]", "[data-testid]"
-        ]
-
-        print("--- Starting get_elements_info ---")
-        if selector:
-            elements = await self.page.locator(selector).all()
-        else:
-            elements = []
-            for s in selectors:
-                elements.extend(await self.page.locator(s).all())
-
-        for element in elements:
-            if limit is not None and len(elements_info) >= limit:
-                break
-            try:
-                tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
-                text_content = await element.text_content()
-                aria_label = await element.get_attribute("aria-label")
-                role = await element.get_attribute("role")
-                placeholder = await element.get_attribute("placeholder")
-                data_testid = await element.get_attribute("data-testid")
-                title = await element.get_attribute("title")
-                alt = await element.get_attribute("alt")
-                
-                # Attempt to create a robust locator
-                locator_parts = []
-                if aria_label:
-                    locator_parts.append(f"page.get_by_label('{aria_label}')")
-                if role:
-                    locator_parts.append(f"page.get_by_role('{role}', name='{text_content or aria_label or title or alt or ''}', exact=False)")
-                if text_content and tag_name in ["button", "a"]:
-                    locator_parts.append(f"page.get_by_text('{text_content}', exact=False)")
-                if placeholder:
-                    locator_parts.append(f"page.get_by_placeholder('{placeholder}')")
-                if data_testid:
-                    locator_parts.append(f"page.get_by_test_id('{data_testid}')")
-                if title:
-                    locator_parts.append(f"page.get_by_title('{title}')")
-                if alt:
-                    locator_parts.append(f"page.get_by_alt_text('{alt}')")
-                
-                # Fallback to CSS selector if no specific locator can be formed
-                if not locator_parts:
-                    element_id = await element.get_attribute('id')
-                    id_suffix = f'[id="{element_id}"]' if element_id else ''
-                    locator_parts.append(f"page.locator('{tag_name}{id_suffix}')")
-
-                elements_info.append({
-                    "tag_name": tag_name,
-                    "text_content": text_content.strip() if text_content else "",
-                    "aria_label": aria_label,
-                    "role": role,
-                    "placeholder": placeholder,
-                    "data_testid": data_testid,
-                    "title": title,
-                    "alt": alt,
-                    "locator": " or ".join(locator_parts)
-                })
-            except Exception as e:
-                print(f"Error processing element: {e}")
-                continue
-        print(f"--- Finished get_elements_info: Found {len(elements_info)} elements ---")
-        # print(f"Sample elements_info: {elements_info[:2]}") # Print first 2 elements for brevity
-        return elements_info
-
-    async def execute_interaction(self, interaction_code: str):
-        if not self.page:
-            return "Browser not initialized."
-        try:
-            # The user code is a series of await calls. We wrap it in an async function.
-            code_to_exec = (
-                "async def __interaction():\n" +
-                "\n".join(f"    {line}" for line in interaction_code.splitlines())
-            )
-            
-            # The 'page' object will be available in the scope of the exec function
-            exec_scope = {'page': self.page, 'asyncio': asyncio}
-            
-            # Define the __interaction function inside the scope
-            exec(code_to_exec, exec_scope)
-            
-            # Get the function from the scope
-            interaction_func = exec_scope['__interaction']
-            
-            # Now, await the function call
-            await interaction_func()
-
-            return "Interaction executed successfully."
-        except Exception as e:
-            print(f"An error occurred during interaction: {traceback.format_exc()}")
-            return f"An error occurred during interaction: {traceback.format_exc()}"
-
+# Create a singleton instance for the application to use
 browser_manager = BrowserManager()

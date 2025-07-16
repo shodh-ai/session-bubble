@@ -1,180 +1,93 @@
-from dotenv import load_dotenv
-load_dotenv() # Load environment variables as early as possible
-
-import os
+# in aurora_agent/app.py (THE FINAL, WORKING VERSION)
+import logging
 import asyncio
-import base64
-import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import StreamingResponse, Response
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
-import uuid
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+# +++ ADD THESE IMPORTS +++
+from google.adk.events.event import Event
+from google.genai.types import Content, Part
+from pydantic import ConfigDict
 
-from .root_agent.agent import root_agent
+# Import the brain you built
+from .agent_brains.root_agent import root_agent
+
+# Import the browser manager
 from .browser_manager import browser_manager
 
-# Monkey-patch json.JSONEncoder.default to handle bytes
-_original_default = json.JSONEncoder().default
-def _new_default(obj):
-    if isinstance(obj, bytes):
-        # The ADK telemetry tries to serialize the request, which fails on bytes.
-        # We encode bytes to a base64 string to make it serializable.
-        return base64.b64encode(obj).decode("utf-8")
-    return _original_default(obj)
+logger = logging.getLogger(__name__)
 
-json.JSONEncoder.default = lambda self, obj: _new_default(obj)
+# +++ ADD THIS HELPER CLASS +++
+# This allows us to construct the event object correctly, just like in your test.
+class MutableEvent(Event):
+    model_config = ConfigDict(extra='allow')
 
-# Verify that the API key is loaded
-if not os.getenv("GOOGLE_API_KEY"):
-    raise ValueError("GOOGLE_API_KEY not found in environment variables. Please ensure your .env file is correctly configured and located in the aurora-python directory.")
+# --- Main Executor Function ---
+async def execute_browser_mission(mission_payload: dict, session_id: str) -> dict:
+    logger.info(f"--- ADK MISSION STARTING (Session: {session_id}) ---")
 
-app = FastAPI()
-
-# Initialize the session service globally
-session_service = InMemorySessionService()
-
-# Define the application name for ADK sessions
-APP_NAME = "aurora"
-
-# Dictionary to store session IDs per client host (for InMemorySessionService)
-# This needs to be global to persist across requests
-client_sessions = {}
-
-# Instantiate the Runner with the root_agent, app_name, and session_service.
-runner = Runner(
-    agent=root_agent, 
-    app_name=APP_NAME, 
-    session_service=session_service
-)
-
-class ChatRequest(BaseModel):
-    message: str
-
-@app.on_event("startup")
-async def startup_event():
-    # Start the browser when the application starts
-    await browser_manager.start_browser()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Close the browser when the application stops
-    await browser_manager.close_browser()
-
-async def stream_agent_response(message: str, client_host: str):
-    """Stream responses from the root agent using the ADK Runner."""
-    print("\n--- NEW REQUEST ---")
-    print(f"Received message: {message}")
-    user_id = f"user_{client_host}"
-    print(f"User ID: {user_id}")
-    
-    # Get or create session ID for this client host
-    if user_id not in client_sessions:
-        session_id = str(uuid.uuid4())
-        client_sessions[user_id] = session_id
-        # Create a new session in InMemorySessionService
-        session_service.create_session(
-            app_name=APP_NAME, 
-            user_id=user_id, 
-            session_id=session_id, 
-            state={}
-        )
-        print(f"Created new session for {user_id}: {session_id}")
-    else:
-        session_id = client_sessions[user_id]
-        print(f"Continuing session for {user_id}: {session_id}")
-
-    # The agent will now use the last screenshot that was sent to the frontend.
-    screenshot_bytes = browser_manager.last_sent_screenshot_bytes
-    
-    parts = [types.Part(text=message)]
-    if screenshot_bytes:
-        screenshot_part = types.Part(
-            inline_data=types.Blob(
-                mime_type="image/jpeg",
-                data=screenshot_bytes
-            )
-        )
-        parts.insert(0, screenshot_part)
-
-    new_message_content = types.Content(role="user", parts=parts)
-    print("\n--- CONTENT SENT TO RUNNER ---")
-    if screenshot_bytes:
-        print("New message content includes screenshot data.")
-    else:
-        print("New message content does not include screenshot data.")
-    print(f"Text message: {message}")
-    print("--------------------------")
-    
-    # The runner.run_async() method returns an async generator of events
-    async for event in runner.run_async(
-        user_id=user_id, 
-        session_id=session_id, 
-        new_message=new_message_content
-    ):
-        print(f"\n--- EVENT FROM RUNNER ---")
-        # Only print the text content of the event to avoid logging large image strings
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    print(f"Event Text Part: {part.text}")
-                elif hasattr(part, "function_call") and part.function_call:
-                    print(f"Event Function Call: {part.function_call.name}")
-                elif hasattr(part, "function_response") and part.function_response:
-                    if part.function_response.name == "get_latest_screenshot":
-                        print(f"Event Function Response: {part.function_response.name}\nResponse: (Screenshot data - omitted for brevity)")
-                    else:
-                        print(f"Event Function Response: {part.function_response.name}\nResponse: {part.function_response.response}")
-        print("-------------------------")
-        # Check if the event has content and parts, and if the part has text
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    print(f"\n--- RESPONSE TO USER ---")
-                    print(part.text)
-                    print("------------------------")
-                    yield part.text
-
-@app.post("/api/chat")
-async def chat_handler(request: ChatRequest, req: Request):
-    """Handle chat requests and stream agent responses."""
-    client_host = req.client.host
-    generator = stream_agent_response(request.message, client_host)
-    return StreamingResponse(generator, media_type="text/plain")
-
-@app.websocket("/ws/agent")
-async def agent_websocket_endpoint(websocket: WebSocket):
-    """Handle the WebSocket connection for streaming the browser view."""
-    await websocket.accept()
     try:
-        while True:
-            # This call now also updates browser_manager.last_sent_screenshot_bytes
-            screenshot_bytes = await browser_manager.get_screenshot()
-            if screenshot_bytes:
-                await websocket.send_bytes(screenshot_bytes)
-            await asyncio.sleep(0.5) # Adjust sleep time as needed
-    except WebSocketDisconnect:
-        print("Client disconnected.")
+        await browser_manager.start_browser()
+        logger.info("Browser is running.")
     except Exception as e:
-        print(f"An error occurred in WebSocket: {e}")
+        logger.error(f"CRITICAL: Failed to start browser: {e}", exc_info=True)
+        return {"status": "ERROR", "result": f"Browser failed to start: {e}"}
 
+    prompt = mission_payload.get("mission_prompt", "No prompt provided.")
+    context = mission_payload.get("session_context", {})
+    user_id = context.get("user_id", "default_user")
+    current_url = context.get("current_url", "")
 
+    prompt_with_context = f"Current Page URL: {current_url}\nUser's Mission: {prompt}"
 
+    logger.info(f"Invoking root_agent with enriched prompt...")
 
-# Add CORS middleware to allow requests from the frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # Adjust for your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # Initialize the runner with a session service.
+    session_service = InMemorySessionService()
+    await session_service.create_session(session_id=session_id, user_id=user_id, app_name="aurora_agent")
+    runner = Runner(agent=root_agent, session_service=session_service, app_name="aurora_agent")
 
+    # +++ THIS IS THE CRITICAL FIX +++
+    # We build the structured Event object instead of passing a raw string.
+    new_content = Content(parts=[Part(text=prompt_with_context)])
+    new_message_event = MutableEvent(author="user", content=new_content)
+    # The runner also expects a top-level 'parts' attribute, so we add it.
+    new_message_event.parts = new_content.parts
+    # +++ END OF FIX +++
+    
+    final_result = "No textual output from agent."
+    try:
+        # --- THIS IS THE CORRECTED LOOP ---
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=new_message_event
+        ):
+            logger.info(f"[DEBUG] Raw event from runner: {event}")
 
-if __name__ == "__main__":
-    import uvicorn
-    # Run the FastAPI application
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+            # The most robust way to check for the final response is to look for
+            # an event that has content but is NOT a tool call.
+            # The final textual response from the agent is a specific kind of event.
+            
+            is_tool_call = event.content and event.content.parts and hasattr(event.content.parts[0], 'tool_code')
+            has_text = event.content and event.content.parts and hasattr(event.content.parts[0], 'text')
+
+            if has_text and not is_tool_call:
+                # This is likely the final conversational response from the agent.
+                final_result = event.content.parts[0].text
+                logger.info(f"Captured agent's final textual response: {final_result}")
+            elif is_tool_call:
+                # This is an intermediate step where the agent is using a tool.
+                # We can log it for debugging.
+                tool_name = event.content.parts[0].tool_code.name
+                logger.info(f"Agent is calling tool: {tool_name}")
+            
+        # The loop finishes when the agent's run is complete.
+        # The last captured text is our final result.
+        # --- END OF CORRECTED LOOP ---
+                    
+        logger.info(f"ADK mission completed. Final result: {final_result}")
+        return {"status": "SUCCESS", "result": final_result}
+
+    except Exception as e:
+        logger.error(f"An exception occurred during ADK agent execution: {e}", exc_info=True)
+        return {"status": "ERROR", "result": f"Agent execution failed: {e}"}
