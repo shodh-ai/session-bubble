@@ -1,0 +1,18 @@
+- name: "Test UI Toolbar Interaction (Bold Button)"
+  # The simple, high-level prompt the agent will get
+  prompt: "Click the 'Bold' button in the toolbar."
+  # How we verify the AI succeeded
+  verification:
+    # We need a way to check if the bold button was *actually* clicked.
+    # This is tricky. A simple way is to use the API to check the result.
+    setup_step:
+      # Before the test, use the API to select a cell and put text in it.
+      tool_to_use: "sheets_api_tool"
+      function_to_call: "write_cell"
+      args: ["TestSheet!A1", "Some Text"]
+    verification_step:
+      tool_to_use: "sheets_api_tool"
+      # We need a new function in our API tool to check formatting.
+      function_to_call: "get_cell_format" 
+      args: ["TestSheet!A1"]
+      expected_result_contains: {"bold": True} 
