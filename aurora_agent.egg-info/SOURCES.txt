@@ -1,0 +1,5 @@
+setup.py
+aurora_agent.egg-info/PKG-INFO
+aurora_agent.egg-info/SOURCES.txt
+aurora_agent.egg-info/dependency_links.txt
+aurora_agent.egg-info/top_level.txt

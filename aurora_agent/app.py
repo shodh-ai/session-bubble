@@ -1,25 +1,50 @@
-# in aurora_agent/app.py (THE FINAL, WORKING VERSION)
+# in aurora_agent/app.py
 import logging
 import asyncio
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
-# +++ ADD THESE IMPORTS +++
 from google.adk.events.event import Event
 from google.genai.types import Content, Part
-from pydantic import ConfigDict
-
+from aurora_agent.tools.sheets import get_sheets_tool_instance  # Factory function to get SheetsTool instance
+from aurora_agent.ui_tools.interaction_tool import live_ui_interaction_tool # The real UI tool
 # Import the brain you built
 from .agent_brains.root_agent import root_agent
 
 # Import the browser manager
 from .browser_manager import browser_manager
+from fastapi import FastAPI
+
+app = FastAPI()
+
 
 logger = logging.getLogger(__name__)
 
-# +++ ADD THIS HELPER CLASS +++
-# This allows us to construct the event object correctly, just like in your test.
-class MutableEvent(Event):
-    model_config = ConfigDict(extra='allow')
+# --- Critical ADK Patch ---
+# The google-adk library does not correctly add the user's first message to the request.
+# We are patching the method responsible for calling the LLM (`_call_llm_async`)
+# to ensure the user's content is added to the request payload before being sent.
+from google.adk.flows.llm_flows import base_llm_flow
+
+
+@app.post("/run-mission")
+async def run_mission(payload: dict):
+    session_id = payload.get("session_id", "default")
+    return await execute_browser_mission(payload, session_id)
+
+    
+async def patched_call_llm_async(self, invocation_context):
+    llm_request = self._build_llm_request(invocation_context)
+    if invocation_context.new_message and invocation_context.new_message.content:
+        llm_request.contents.append(invocation_context.new_message.content)
+    async for llm_response in self._llm.generate_content_async(
+        llm_request=llm_request, stream=self._stream
+    ):
+        yield self._build_event_from_llm_response(llm_response)
+
+# Apply the patch
+base_llm_flow.BaseLlmFlow._call_llm_async = patched_call_llm_async
+# --- End of Patch ---
+
 
 # --- Main Executor Function ---
 async def execute_browser_mission(mission_payload: dict, session_id: str) -> dict:
@@ -77,9 +102,10 @@ async def execute_browser_mission(mission_payload: dict, session_id: str) -> dic
                 logger.info(f"Captured agent's final textual response: {final_result}")
             elif is_tool_call:
                 # This is an intermediate step where the agent is using a tool.
-                # We can log it for debugging.
-                tool_name = event.content.parts[0].tool_code.name
-                logger.info(f"Agent is calling tool: {tool_name}")
+                tool_call = event.content.parts[0].tool_code
+                tool_name = tool_call.name
+                tool_args = tool_call.args if hasattr(tool_call, 'args') else None
+                logger.info(f"Agent is calling tool: {tool_name} with args: {tool_args}")
             
         # The loop finishes when the agent's run is complete.
         # The last captured text is our final result.

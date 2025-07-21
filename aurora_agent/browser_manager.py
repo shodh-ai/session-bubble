@@ -1,82 +1,96 @@
-# in aurora_agent/browser_manager.py (CORRECTED AND FINAL VERSION)
+# in aurora_agent/browser_manager.py (FINAL, CORRECTED VERSION)
 import asyncio
 import traceback
 import logging
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from typing import Optional
+import os
 
 logger = logging.getLogger(__name__)
 
 class BrowserManager:
     def __init__(self):
         self.playwright_instance = None
-        self.browser_instance = None
+        self.browser_instance: Optional[Browser] = None
+        # The manager should not hold a single page, but a context
+        self.context: Optional[BrowserContext] = None
         self.last_sent_screenshot_bytes: Optional[bytes] = None
+        # Store a reference to the most recently opened page so other modules can access it easily
+        self.page: Optional[Page] = None
 
-    async def start_browser(self):
+    async def start_browser(self, headless: bool = True):
         if self.browser_instance:
             logger.info("Browser is already running.")
             return
 
-        logger.info("Initializing Playwright and launching browser...")
-        try:
-            self.playwright_instance = await async_playwright().start()
-            self.browser_instance = await self.playwright_instance.chromium.launch(headless=False)
-            logger.info("Browser started successfully.")
-        except Exception as e:
-            logger.error(f"CRITICAL: An unexpected error occurred during browser startup: {e}", exc_info=True)
-            await self.close_browser()
-            raise
+        logger.info(f"Initializing Playwright and launching browser (headless={headless})...")
+        self.playwright_instance = await async_playwright().start()
+        self.browser_instance = await self.playwright_instance.chromium.launch(headless=headless)
+        
+        # Create a single, authenticated context if auth file exists
+        auth_file_path = 'auth.json'
+        if os.path.exists(auth_file_path):
+            self.context = await self.browser_instance.new_context(storage_state=auth_file_path)
+        else:
+            self.context = await self.browser_instance.new_context()
+        
+        logger.info("Browser and context started successfully.")
+
+    async def get_page(self, url: str) -> Page:
+        """Gets a new, navigated page from the managed browser context."""
+        if not self.context:
+            raise Exception("Browser context not started. Call start_browser() first.")
+        
+        page = await self.context.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        self.page = page
+        return page
+
+    async def navigate(self, url: str, headless: bool = True) -> Page:
+        """Convenience: ensure browser is running and navigate to URL.
+        Stores page on the manager for later access.
+        """
+        if not self.browser_instance:
+            await self.start_browser(headless=headless)
+        page = await self.get_page(url)
+        return page
 
     async def close_browser(self):
+        if self.context:
+            await self.context.close()
         if self.browser_instance:
             await self.browser_instance.close()
-            logger.info("Browser instance closed.")
         if self.playwright_instance:
             await self.playwright_instance.stop()
-            logger.info("Playwright instance stopped.")
+        
+        self.browser_instance = None
+        self.context = None
+        logger.info("Browser and context closed successfully.")
 
-    async def execute_interaction(self, url: str, interaction_code: str):
-        """Creates a new page, navigates, and executes the interaction code."""
-        if not self.browser_instance:
-            return "Browser not started."
-            
-        page = await self.browser_instance.new_page()
-        logger.info(f"Executing interaction on new page at URL: {url}")
-        try:
-            await page.goto(url, wait_until="networkidle")
-            
-            # This is where you would inject your annotation helpers
-            from .ui_tools.annotation_helpers import highlight_element, remove_annotations
-            
-            exec_scope = {
-                'page': page, 
-                'asyncio': asyncio,
-                'highlight_element': highlight_element,
-                'remove_highlights': remove_annotations,
-            }
-            
-            code_to_exec = f"async def __interaction():\n" + "".join(f"    {line}\n" for line in interaction_code.splitlines())
-            
-            exec(code_to_exec, exec_scope)
-            interaction_func = exec_scope['__interaction']
-            await interaction_func()
-            
-            # Take a final screenshot after the interaction
-            self.last_sent_screenshot_bytes = await page.screenshot(type="jpeg", quality=70)
-            
-            return "Interaction executed successfully."
-        except Exception as e:
-            error_msg = f"An error occurred during interaction: {traceback.format_exc()}"
-            logger.error(error_msg)
-            return error_msg
-        finally:
-            await page.close()
+# A new, separate function for executing code. It is no longer part of the manager.
+async def execute_interaction_on_page(page: Page, interaction_code: str) -> dict:
+    """Executes a string of Playwright code on a given page object."""
+    from aurora_agent.ui_tools.annotation_helpers import highlight_element, remove_annotations
+    
+    try:
+        exec_scope = {
+            'page': page, 
+            'asyncio': asyncio,
+            'highlight_element': highlight_element,
+            'remove_annotations': remove_annotations,
+        }
+        
+        code_to_exec = f"async def __interaction():\n" + "".join(f"    {line}\n" for line in interaction_code.splitlines())
+        
+        exec(code_to_exec, exec_scope)
+        interaction_func = exec_scope['__interaction']
+        await interaction_func()
+        
+        return {"success": True, "message": "Interaction executed successfully."}
+    except Exception as e:
+        error_msg = f"An error occurred during interaction: {traceback.format_exc()}"
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
 
-    # NOTE: The browser_manager no longer needs get_elements_info or navigate.
-    # Those tasks are now handled by the agent's internal logic, which generates
-    # Playwright code that is then executed by execute_interaction.
-    # The agent gets its visual context from the screenshot.
-
-# Create a singleton instance for the application to use
+# Create a singleton instance of the manager for the application to use
 browser_manager = BrowserManager()

@@ -1,6 +1,6 @@
 import os
 from .api_client import SheetsAPIClient
-from .tool import SheetsTool
+from .api_tool import SheetsTool
 
 # This is a factory function. It ensures that the SheetsTool is created
 # only when this function is called, giving time for .env to be loaded.

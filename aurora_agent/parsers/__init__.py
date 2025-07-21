@@ -5,12 +5,14 @@ from .sheets_parser import SheetsParser
 from .docs_parser import DocsParser
 import re
 from urllib.parse import urlparse
+from .jupyter_parser import JupyterParser
 
 # The registry is a list of tuples: (url_keyword, parser_class)
 # The first parser that matches the URL will be used.
 PARSER_REGISTRY = [
     (re.compile(r"https://docs\.google\.com/spreadsheets/"), SheetsParser),
     (re.compile(r"https://docs\.google\.com/document/"), DocsParser),
+    (re.compile(r"/vscode/workbench/notebook/"), JupyterParser),
 ]
 DEFAULT_PARSER = GenericParser
 

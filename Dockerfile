@@ -1,80 +1,54 @@
-# Stage 1: Base image with Python and essential build tools
+# Stage 1: Base image with Python
 FROM python:3.11-bookworm
 
-# Set environment variables
+# Set environment variables that will be used by the non-root user later
 ENV PYTHONUNBUFFERED=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
+    PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright \
+    PATH="/home/appuser/.local/bin:${PATH}" \
+    PYTHONPATH="/home/appuser/app"
 
-# Install system dependencies required for Playwright, Chrome, and KasmVNC
-# Using 'apt-get -y --no-install-recommends' for a smaller image
+# --- ROOT-LEVEL SETUP ---
+# All commands in this section run as root, giving them full system access.
+
+# 1. Install all system dependencies.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gnupg \
-    wget \
-    xvfb \
-    tini \
-    gosu \
-    dbus-x11 \
-    x11-utils \
-    libgl1-mesa-glx \
-    libxtst6 \
-    libxt6 \
-    libx11-6 \
-    libxext6 \
-    libxfixes3 \
-    libxdmcp6 \
-    libxau6 \
-    libdbus-1-3 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libasound2 \
-    libnss3 \
-    libxss1 \
-    libdrm2 \
-    libatspi2.0-0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    x11vnc \
-    # Clean up apt-get cache
+    curl gnupg wget tini gosu unzip \
+    xvfb dbus-x11 x11-utils x11vnc \
+    libgl1-mesa-glx libxtst6 libgtk-3-0 libasound2 libnss3 libxss1 libdrm2 \
+    libatspi2.0-0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies for Playwright Chromium as root
-RUN pip install playwright==1.44.0 && \
-    playwright install-deps chromium && \
-    pip uninstall -y playwright
+# 2. Copy requirements file and install Python packages GLOBALLY.
+#    This is the key fix. We do this as root so packages are available to all users.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create a non-root user and switch to it
-RUN useradd -ms /bin/bash appuser && chown -R appuser:appuser /home/appuser
+# 3. Install Playwright browsers and their OS dependencies as root.
+RUN playwright install-deps chromium && \
+    playwright install chromium
 
+# --- NON-ROOT USER SETUP ---
+# Now that the system is fully prepared, we create and switch to our standard user.
+
+# 4. Create the non-root user and the application directory.
+RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /home/appuser/app
 
-USER appuser
-
-# Add the user's local bin to the PATH and set the PYTHONPATH
-ENV PATH="/home/appuser/.local/bin:${PATH}" \
-    PYTHONPATH="/home/appuser/app:/home/appuser/app/aurora_agent"
-
-# Copy and install dependencies as the non-root user
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install -r requirements.txt
-
-# Now that Playwright is installed, install the browser binaries
-RUN playwright install chromium
-
-# Copy the rest of the application code
+# 5. Copy the entire application source code and set its ownership to the new user.
+#    This is the final step where we add our own code.
 COPY --chown=appuser:appuser . .
 
-# Expose the ports for the FastAPI app and KasmVNC
+# 6. Switch to the non-root user. This is a security best practice.
+#    The entrypoint script will now start as this user by default (though gosu will handle it).
+USER appuser
+
+# --- FINAL CONFIGURATION ---
+# Expose ports
 EXPOSE 8000
 EXPOSE 6901
 
-# Switch back to root to allow the entrypoint script to run with sudo-like privileges
+# Switch back to root ONLY to allow the entrypoint script to use 'gosu'.
 USER root
 
-# Use tini as the main entrypoint to manage processes correctly
+# Use tini to manage processes and execute the entrypoint script.
 ENTRYPOINT ["/usr/bin/tini", "--", "./entrypoint.sh"]

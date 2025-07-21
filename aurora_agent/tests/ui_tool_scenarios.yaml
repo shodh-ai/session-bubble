@@ -1,0 +1,21 @@
+- name: "Test UI Tool Can Make Cell A1 Bold"
+  # The high-level prompt for our tool
+  prompt: "Select cell A1 in the TestSheet and click the 'Bold' button in the toolbar."
+  
+  # How we will verify the action was successful
+  verification:
+    setup:
+      # Before the test, we ensure A1 is NOT bold
+      - tool: "sheets_api_tool"
+        function: "write_cell"
+        args: ["TestSheet!A1", "UI Tool Test"]
+      - tool: "sheets_api_tool"
+        function: "remove_bold_format" # The function you've already created
+        args: ["TestSheet!A1"]
+    
+    verify:
+      # After the test, we check that A1 IS bold
+      - tool: "sheets_api_tool"
+        function: "get_cell_format"
+        args: ["TestSheet!A1"]
+        expected_result_contains: '"bold": true' # We expect this string in the JSON output

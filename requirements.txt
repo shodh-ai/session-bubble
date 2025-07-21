@@ -13,6 +13,8 @@ playwright
 # Environment and Utilities
 python-dotenv
 pydantic
+pytest-asyncio
+openai
 
 # Add any other specific libraries your agents might need
 # e.g., pandas if you plan to do data manipulation
