@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Agent - Teacher Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .auth-section {
+            margin: 30px 0;
+        }
+        
+        .auth-status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .auth-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .auth-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .connect-btn {
+            background: linear-gradient(135deg, #4285f4 0%, #34a853 50%, #fbbc05 75%, #ea4335 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+        }
+        
+        .connect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+        }
+        
+        .connect-btn:active {
+            transform: translateY(0);
+        }
+        
+        .google-icon {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .features {
+            margin-top: 40px;
+            text-align: left;
+        }
+        
+        .features h3 {
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .feature-list {
+            list-style: none;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            color: #666;
+        }
+        
+        .feature-list li:before {
+            content: "✓";
+            color: #4285f4;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .user-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .disconnect-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .disconnect-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🌟 Aurora Agent</div>
+        <div class="subtitle">Teacher Dashboard - Google Integration</div>
+        
+        <div class="auth-section">
+            <div id="authStatus" class="auth-status disconnected">
+                <span id="statusText">Not connected to Google</span>
+            </div>
+            
+            <div class="status-info">
+                <strong>Token Expires:</strong> <span id="tokenExpiry">Not authenticated</span><br>
+                <strong>Scopes:</strong> <span id="scopes">None</span><br>
+                <strong>Last Updated:</strong> <span id="lastUpdated"></span><br>
+                <strong>WebSocket:</strong> <span id="connectionStatus" class="status-disconnected">Disconnected</span>
+            </div>
+            
+            <div id="userInfo" class="user-info" style="display: none;">
+                <strong>User ID:</strong> <span id="userId"></span><br>
+            </div>
+            
+            <script>
+                let authStatus = null;
+                let userId = 'default_teacher';
+                let websocket = null;
+                let reconnectAttempts = 0;
+                let maxReconnectAttempts = 5;
+
+                // WebSocket connection management
+                function connectWebSocket() {
+                    const wsUrl = `ws://localhost:8000/ws/${userId}`;
+                    
+                    try {
+                        websocket = new WebSocket(wsUrl);
+                        
+                        websocket.onopen = function(event) {
+                            console.log('WebSocket connected');
+                            reconnectAttempts = 0;
+                            updateConnectionStatus('Connected', 'success');
+                        };
+                        
+                        websocket.onmessage = function(event) {
+                            const message = JSON.parse(event.data);
+                            console.log('WebSocket message received:', message);
+                            
+                            handleWebSocketMessage(message);
+                        };
+                        
+                        websocket.onclose = function(event) {
+                            console.log('WebSocket disconnected');
+                            updateConnectionStatus('Disconnected', 'error');
+                            
+                            // Attempt to reconnect
+                            if (reconnectAttempts < maxReconnectAttempts) {
+                                reconnectAttempts++;
+                                console.log(`Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                                setTimeout(connectWebSocket, 2000 * reconnectAttempts);
+                            }
+                        };
+                        
+                        websocket.onerror = function(error) {
+                            console.error('WebSocket error:', error);
+                            updateConnectionStatus('Error', 'error');
+                        };
+                        
+                    } catch (error) {
+                        console.error('Failed to create WebSocket:', error);
+                        updateConnectionStatus('Failed to connect', 'error');
+                    }
+                }
+                
+                function handleWebSocketMessage(message) {
+                    switch (message.type) {
+                        case 'connection_established':
+                            console.log('WebSocket connection established for user:', message.user_id);
+                            break;
+                            
+                        case 'webhook_event':
+                            handleSheetChangeEvent(message.event);
+                            break;
+                            
+                        case 'heartbeat_response':
+                            console.log('Heartbeat response received');
+                            break;
+                            
+                        default:
+                            console.log('Unknown message type:', message.type);
+                    }
+                }
+                
+                function handleSheetChangeEvent(event) {
+                    console.log('Sheet change event received:', event);
+                    
+                    // Create a notification for the user
+                    showNotification(
+                        `Sheet Updated: ${event.sheet_name}`,
+                        `${event.change_type} in range ${event.range}`,
+                        'info'
+                    );
+                    
+                    // Update the UI to show recent activity
+                    addRecentActivity(event);
+                }
+                
+                function updateConnectionStatus(status, type) {
+                    const statusElement = document.getElementById('connectionStatus');
+                    if (statusElement) {
+                        statusElement.textContent = status;
+                        statusElement.className = `status-${type}`;
+                    }
+                }
+                
+                function showNotification(title, message, type = 'info') {
+                    // Create a simple notification
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.innerHTML = `
+                        <strong>${title}</strong><br>
+                        ${message}
+                    `;
+                    
+                    // Add to page
+                    document.body.appendChild(notification);
+                    
+                    // Remove after 5 seconds
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 5000);
+                }
+                
+                function addRecentActivity(event) {
+                    const activityList = document.getElementById('recentActivity');
+                    if (!activityList) {
+                        // Create activity section if it doesn't exist
+                        const activitySection = document.createElement('div');
+                        activitySection.innerHTML = `
+                            <h3>Recent Activity</h3>
+                            <ul id="recentActivity" class="activity-list"></ul>
+                        `;
+                        document.querySelector('.features').after(activitySection);
+                    }
+                    
+                    const activityItem = document.createElement('li');
+                    activityItem.innerHTML = `
+                        <strong>${event.sheet_name}</strong>: ${event.change_type} in ${event.range}
+                        <small>${new Date(event.timestamp).toLocaleTimeString()}</small>
+                    `;
+                    
+                    const list = document.getElementById('recentActivity');
+                    list.insertBefore(activityItem, list.firstChild);
+                    
+                    // Keep only the last 5 activities
+                    while (list.children.length > 5) {
+                        list.removeChild(list.lastChild);
+                    }
+                }
+                
+                function sendHeartbeat() {
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify({
+                            type: 'heartbeat',
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                }
+                
+                // Start heartbeat every 30 seconds
+                setInterval(sendHeartbeat, 30000);
+                
+                // Initialize WebSocket connection when page loads
+                document.addEventListener('DOMContentLoaded', function() {
+                    connectWebSocket();
+                    checkAuthStatus();
+                });
+                
+                // Update the existing checkAuthStatus function to work with WebSocket
+                async function checkAuthStatus() {
+                    try {
+                        const response = await fetch(`/auth/status?user_id=${userId}`);
+                        const data = await response.json();
+                        authStatus = data;
+                        
+                        const statusElement = document.getElementById('statusText');
+                        const connectBtn = document.getElementById('connectBtn');
+                        const disconnectBtn = document.getElementById('disconnectBtn');
+                        const userInfo = document.getElementById('userInfo');
+                        
+                        if (data.authenticated) {
+                            statusElement.textContent = 'Connected to Google Account ✓';
+                            statusElement.style.color = '#4caf50';
+                            connectBtn.style.display = 'none';
+                            disconnectBtn.style.display = 'inline-block';
+                            
+                            // Update token info
+                            document.getElementById('tokenExpiry').textContent = 
+                                new Date(data.token_expiry).toLocaleString();
+                            document.getElementById('scopes').textContent = 
+                                data.scopes ? data.scopes.join(', ') : 'None';
+                            document.getElementById('lastUpdated').textContent = 
+                                new Date(data.last_updated).toLocaleString();
+                            
+                            userInfo.style.display = 'block';
+                            document.getElementById('userId').textContent = data.user_id;
+                        } else {
+                            statusElement.textContent = 'Not connected to Google';
+                            statusElement.style.color = '#f44336';
+                            connectBtn.style.display = 'inline-block';
+                            disconnectBtn.style.display = 'none';
+                            userInfo.style.display = 'none';
+                        }
+                    } catch (error) {
+                        console.error('Error checking auth status:', error);
+                        document.getElementById('statusText').textContent = 'Error checking status';
+                    }
+                }
+            </script>
+            
+            <a href="/auth/google?user_id=default_teacher" id="connectBtn" class="connect-btn">
+                <span class="google-icon">🔗</span>
+                Connect Your Google Account
+            </a>
+            
+            <button id="disconnectBtn" class="disconnect-btn" style="display: none;">
+                Disconnect Account
+            </button>
+        </div>
+        
+        <div class="features">
+            <h3>What you'll get access to:</h3>
+            <ul class="feature-list">
+                <li>Google Drive file management</li>
+                <li>Google Sheets creation and editing</li>
+                <li>Google Apps Script automation</li>
+                <li>Seamless integration with your Google Workspace</li>
+            </ul>
+        </div>
+        
+        <div style="margin-top: 30px; color: #888; font-size: 0.9rem;">
+            <p>🔒 Your data is secure and encrypted. We only access what you explicitly authorize.</p>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication status on page load
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/auth/status?user_id=default_teacher');
+                const data = await response.json();
+                
+                const statusElement = document.getElementById('authStatus');
+                const statusText = document.getElementById('statusText');
+                const connectBtn = document.getElementById('connectBtn');
+                const disconnectBtn = document.getElementById('disconnectBtn');
+                const userInfo = document.getElementById('userInfo');
+                
+                if (data.authenticated) {
+                    // User is authenticated
+                    statusElement.className = 'auth-status connected';
+                    statusText.textContent = '✅ Connected to Google';
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'inline-block';
+                    userInfo.style.display = 'block';
+                    
+                    // Update user info
+                    document.getElementById('userId').textContent = data.user_id;
+                    document.getElementById('tokenExpiry').textContent = 
+                        data.token_expiry ? new Date(data.token_expiry).toLocaleString() : 'N/A';
+                    document.getElementById('lastUpdated').textContent = 
+                        new Date(data.last_updated).toLocaleString();
+                } else {
+                    // User is not authenticated
+                    statusElement.className = 'auth-status disconnected';
+                    statusText.textContent = '❌ Not connected to Google';
+                    connectBtn.style.display = 'inline-block';
+                    disconnectBtn.style.display = 'none';
+                    userInfo.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+                document.getElementById('statusText').textContent = '⚠️ Error checking connection status';
+            }
+        }
+        
+        // Handle disconnect (placeholder - you'd implement this endpoint)
+        document.getElementById('disconnectBtn').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to disconnect your Google account?')) {
+                // In a real implementation, you'd call a disconnect endpoint
+                alert('Disconnect functionality would be implemented here');
+                // For now, just refresh to show disconnected state
+                location.reload();
+            }
+        });
+        
+        // Check status on page load
+        checkAuthStatus();
+        
+        // Refresh status every 30 seconds
+        setInterval(checkAuthStatus, 30000);
+    </script>
+</body>
+</html>

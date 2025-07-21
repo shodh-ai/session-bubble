@@ -6,6 +6,8 @@ uvicorn
 google-cloud-aiplatform
 google-generativeai
 google-adk
+google-auth-oauthlib
+google-auth
 
 # Playwright for browser automation
 playwright
@@ -15,6 +17,8 @@ python-dotenv
 pydantic
 pytest-asyncio
 openai
+sqlalchemy
+aiosqlite
 
 # Add any other specific libraries your agents might need
 # e.g., pandas if you plan to do data manipulation

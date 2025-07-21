@@ -1,6 +1,10 @@
 # in aurora_agent/app.py
 import logging
 import asyncio
+import os
+import json
+from datetime import datetime
+import secrets
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.adk.events.event import Event
@@ -12,12 +16,50 @@ from .agent_brains.root_agent import root_agent
 
 # Import the browser manager
 from .browser_manager import browser_manager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.ext.asyncio import AsyncSession
+import os
+
+# Import OAuth and database components
+from .auth import oauth_manager, store_user_tokens, get_user_tokens, get_valid_access_token
+from .database import create_tables, get_db
+from .websocket_manager import websocket_manager
+from .webhook_handler import webhook_handler
 
 app = FastAPI()
 
+# Mount static files
+static_path = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    await create_tables()
+
 
 logger = logging.getLogger(__name__)
+
+# Root route to serve the frontend
+@app.get("/")
+async def root():
+    """Serve the teacher dashboard frontend."""
+    static_file = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(static_file):
+        return FileResponse(static_file)
+    else:
+        return HTMLResponse("""
+        <html>
+            <body>
+                <h1>Aurora Agent - Teacher Dashboard</h1>
+                <p>Frontend not found. Please ensure static/index.html exists.</p>
+                <a href="/auth/google?user_id=default_teacher">Connect Your Google Account</a>
+            </body>
+        </html>
+        """)
 
 # --- Critical ADK Patch ---
 # The google-adk library does not correctly add the user's first message to the request.
@@ -30,6 +72,165 @@ from google.adk.flows.llm_flows import base_llm_flow
 async def run_mission(payload: dict):
     session_id = payload.get("session_id", "default")
     return await execute_browser_mission(payload, session_id)
+
+
+# --- OAuth 2.0 Endpoints ---
+
+@app.get("/auth/google")
+async def google_auth_redirect(request: Request, user_id: str = "default_teacher"):
+    """
+    Endpoint 1: Generate Google OAuth authorization URL and redirect teacher.
+    
+    Args:
+        user_id: Teacher's user ID (can be passed as query parameter)
+    
+    Returns:
+        Redirect to Google OAuth consent screen
+    """
+    try:
+        # Generate a secure random state parameter for CSRF protection
+        state = secrets.token_urlsafe(32)
+        
+        # Store state and user_id in session (in production, use proper session management)
+        # For now, we'll encode user_id in the state parameter
+        state_with_user = f"{state}:{user_id}"
+        
+        # Create authorization URL
+        auth_url = oauth_manager.create_authorization_url(state_with_user)
+        
+        logger.info(f"Redirecting user {user_id} to Google OAuth: {auth_url}")
+        
+        # Redirect teacher to Google OAuth consent screen
+        return RedirectResponse(url=auth_url)
+        
+    except Exception as e:
+        logger.error(f"Error creating OAuth URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to initiate OAuth flow")
+
+
+@app.get("/auth/google/callback")
+async def google_auth_callback(
+    request: Request,
+    code: str = None,
+    state: str = None,
+    error: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Endpoint 2: Handle OAuth callback and exchange code for tokens.
+    
+    Args:
+        code: Authorization code from Google
+        state: State parameter for verification
+        error: Error parameter if OAuth failed
+        db: Database session
+    
+    Returns:
+        Success page or error response
+    """
+    try:
+        # Check for OAuth errors
+        if error:
+            logger.error(f"OAuth error: {error}")
+            raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
+        
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="Missing authorization code or state")
+        
+        # Extract user_id from state parameter
+        try:
+            state_parts = state.split(":")
+            if len(state_parts) != 2:
+                raise ValueError("Invalid state format")
+            original_state, user_id = state_parts
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        # Exchange authorization code for tokens
+        token_data = oauth_manager.exchange_code_for_tokens(code, state)
+        
+        # Store tokens in database
+        await store_user_tokens(db, user_id, token_data)
+        
+        logger.info(f"Successfully stored OAuth tokens for user {user_id}")
+        
+        # Return success page
+        success_html = f"""
+        <html>
+            <head>
+                <title>Google Account Connected</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                    .success {{ color: #28a745; }}
+                    .container {{ max-width: 500px; margin: 0 auto; }}
+                    .button {{ 
+                        background-color: #007bff; 
+                        color: white; 
+                        padding: 10px 20px; 
+                        text-decoration: none; 
+                        border-radius: 5px; 
+                        display: inline-block; 
+                        margin-top: 20px;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1 class="success">✅ Google Account Connected Successfully!</h1>
+                    <p>Your Google account has been connected to Aurora Agent.</p>
+                    <p>You can now close this window and return to the application.</p>
+                    <p><strong>User ID:</strong> {user_id}</p>
+                    <a href="/" class="button">Return to App</a>
+                </div>
+            </body>
+        </html>
+        """
+        
+        return HTMLResponse(content=success_html)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in OAuth callback: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to complete OAuth flow")
+
+
+@app.get("/auth/status")
+async def auth_status(user_id: str = "default_teacher", db: AsyncSession = Depends(get_db)):
+    """
+    Check authentication status for a user.
+    
+    Args:
+        user_id: Teacher's user ID
+        db: Database session
+    
+    Returns:
+        Authentication status and token validity
+    """
+    try:
+        user_token = await get_user_tokens(db, user_id)
+        
+        if not user_token:
+            return {
+                "authenticated": False,
+                "message": "No valid tokens found",
+                "auth_url": f"/auth/google?user_id={user_id}"
+            }
+        
+        # Check if we can get a valid access token
+        valid_token = await get_valid_access_token(db, user_id)
+        
+        return {
+            "authenticated": bool(valid_token),
+            "user_id": user_id,
+            "token_expiry": user_token.token_expiry.isoformat() if user_token.token_expiry else None,
+            "scopes": user_token.scopes,
+            "last_updated": user_token.updated_at.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking auth status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to check authentication status")
 
     
 async def patched_call_llm_async(self, invocation_context):
@@ -74,7 +275,7 @@ async def execute_browser_mission(mission_payload: dict, session_id: str) -> dic
     # +++ THIS IS THE CRITICAL FIX +++
     # We build the structured Event object instead of passing a raw string.
     new_content = Content(parts=[Part(text=prompt_with_context)])
-    new_message_event = MutableEvent(author="user", content=new_content)
+    new_message_event = Event(author="user", content=new_content)
     # The runner also expects a top-level 'parts' attribute, so we add it.
     new_message_event.parts = new_content.parts
     # +++ END OF FIX +++
@@ -117,3 +318,84 @@ async def execute_browser_mission(mission_payload: dict, session_id: str) -> dic
     except Exception as e:
         logger.error(f"An exception occurred during ADK agent execution: {e}", exc_info=True)
         return {"status": "ERROR", "result": f"Agent execution failed: {e}"}
+
+
+# ============================================================================
+# WEBSOCKET ENDPOINTS
+# ============================================================================
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """WebSocket endpoint for real-time communication with frontend"""
+    try:
+        await websocket_manager.connect(user_id, websocket)
+        
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Wait for messages from client (heartbeat, etc.)
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                # Handle different message types from client
+                if message.get("type") == "heartbeat":
+                    await websocket_manager.send_to_user(user_id, {
+                        "type": "heartbeat_response",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                elif message.get("type") == "status_request":
+                    await websocket_manager.send_to_user(user_id, {
+                        "type": "status_response",
+                        "connected_users": websocket_manager.get_active_users(),
+                        "user_id": user_id
+                    })
+                    
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                print(f"WebSocket error for user {user_id}: {e}")
+                break
+                
+    except Exception as e:
+        print(f"WebSocket connection error for user {user_id}: {e}")
+    finally:
+        websocket_manager.disconnect(user_id)
+
+# ============================================================================
+# WEBHOOK ENDPOINTS  
+# ============================================================================
+
+@app.post("/webhook/sheets")
+async def sheets_webhook(request: Request):
+    """Webhook endpoint to receive events from Google Apps Script"""
+    try:
+        # Parse the incoming JSON payload
+        payload = await request.json()
+        
+        # Process the webhook event
+        result = await webhook_handler.process_webhook_event(payload)
+        
+        return result
+        
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/webhook/test")
+async def test_webhook():
+    """Test endpoint to simulate a webhook event"""
+    test_payload = {
+        "event_type": "SHEET_CHANGE",
+        "user_id": "default_teacher",
+        "sheet_id": "1ABC123DEF456",
+        "sheet_name": "Lesson Plan", 
+        "change_type": "CELL_UPDATE",
+        "range": "A1",
+        "old_values": [["Old Title"]],
+        "new_values": [["New Lesson Title"]],
+        "timestamp": datetime.utcnow().isoformat(),
+        "event_id": "test_event_123"
+    }
+    
+    result = await webhook_handler.process_webhook_event(test_payload)
+    return result
