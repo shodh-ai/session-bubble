@@ -6,6 +6,22 @@ __pycache__/
 # C extensions
 *.so
 venv
+
+# Sensitive files
+.env
+*.json
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+*.p7b
+*.gpg
+*auth*.json
+*credential*
+*secret*
+*account*
 # Distribution / packaging
 .Python
 build/
