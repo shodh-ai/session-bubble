@@ -20,13 +20,15 @@ from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, WebSock
 from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 import os
 
 # Import OAuth and database components
 from .auth import oauth_manager, store_user_tokens, get_user_tokens, get_valid_access_token
-from .database import create_tables, get_db
+from .database import create_tables, get_db, AsyncSessionLocal, UserToken
 from .websocket_manager import websocket_manager
 from .webhook_handler import webhook_handler
+from .gcp_services.deployment_service import ImprinterDeploymentService
 
 app = FastAPI()
 
@@ -383,19 +385,223 @@ async def sheets_webhook(request: Request):
 
 @app.get("/webhook/test")
 async def test_webhook():
-    """Test endpoint to simulate a webhook event"""
-    test_payload = {
-        "event_type": "SHEET_CHANGE",
-        "user_id": "default_teacher",
-        "sheet_id": "1ABC123DEF456",
-        "sheet_name": "Lesson Plan", 
-        "change_type": "CELL_UPDATE",
-        "range": "A1",
-        "old_values": [["Old Title"]],
-        "new_values": [["New Lesson Title"]],
-        "timestamp": datetime.utcnow().isoformat(),
-        "event_id": "test_event_123"
+    """Test endpoint to simulate a webhook event."""
+    test_event = {
+        "type": "SHEET_CHANGE",
+        "sheet_name": "Test Sheet",
+        "change_type": "EDIT",
+        "range": "A1:B2",
+        "timestamp": datetime.now().isoformat(),
+        "user_email": "test@example.com"
     }
     
-    result = await webhook_handler.process_webhook_event(test_payload)
+    result = await webhook_handler.process_event(test_event, "default_teacher")
     return result
+
+# ============================================================================
+# PHASE 3: SPY DEPLOYMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/spy/deploy")
+async def deploy_spy(request: dict):
+    """
+    Deploy the Aurora Agent spy script to a Google Spreadsheet.
+    
+    Expected request body:
+    {
+        "user_id": "teacher_user_id",
+        "spreadsheet_id": "1abc123..."
+    }
+    """
+    try:
+        user_id = request.get("user_id")
+        spreadsheet_id = request.get("spreadsheet_id")
+        
+        if not user_id or not spreadsheet_id:
+            return {"success": False, "error": "Missing user_id or spreadsheet_id"}
+        
+        # Get user's OAuth tokens with database session
+        async with AsyncSessionLocal() as db:
+            tokens = await db.get(UserToken, user_id)
+            if not tokens:
+                return {"success": False, "error": "User not authenticated with Google"}
+        
+        # Create deployment service with user's credentials
+        # Parse scopes from JSON string format
+        try:
+            scopes = json.loads(tokens.scopes) if tokens.scopes else []
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to split if not JSON format
+            scopes = tokens.scopes.split(",") if tokens.scopes else []
+        
+        credentials = {
+            "token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "scopes": scopes
+        }
+        
+        deployment_service = ImprinterDeploymentService(credentials)
+        result = await deployment_service.deploy_spy(spreadsheet_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in deploy_spy endpoint: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+@app.post("/spy/remove")
+async def remove_spy(request: dict):
+    """
+    Remove the Aurora Agent spy script from a Google Spreadsheet.
+    
+    Expected request body:
+    {
+        "user_id": "teacher_user_id",
+        "spreadsheet_id": "1abc123..."
+    }
+    """
+    try:
+        user_id = request.get("user_id")
+        spreadsheet_id = request.get("spreadsheet_id")
+        
+        if not user_id or not spreadsheet_id:
+            return {"success": False, "error": "Missing user_id or spreadsheet_id"}
+        
+        # Get user's OAuth tokens with database session
+        async with AsyncSessionLocal() as db:
+            tokens = await db.get(UserToken, user_id)
+            if not tokens:
+                return {"success": False, "error": "User not authenticated with Google"}
+        
+        # Create deployment service with user's credentials
+        # Parse scopes from JSON string format
+        try:
+            scopes = json.loads(tokens.scopes) if tokens.scopes else []
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to split if not JSON format
+            scopes = tokens.scopes.split(",") if tokens.scopes else []
+        
+        credentials = {
+            "token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "scopes": scopes
+        }
+        
+        deployment_service = ImprinterDeploymentService(credentials)
+        result = await deployment_service.remove_spy(spreadsheet_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in remove_spy endpoint: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+@app.get("/spy/status")
+async def check_spy_status(user_id: str, spreadsheet_id: str):
+    """
+    Check the status of the Aurora Agent spy script on a Google Spreadsheet.
+    
+    Query parameters:
+    - user_id: teacher_user_id
+    - spreadsheet_id: 1abc123...
+    """
+    try:
+        if not user_id or not spreadsheet_id:
+            return {"deployed": False, "error": "Missing user_id or spreadsheet_id"}
+        
+        # Get user's OAuth tokens with database session
+        async with AsyncSessionLocal() as db:
+            tokens = await db.get(UserToken, user_id)
+            if not tokens:
+                return {"deployed": False, "error": "User not authenticated with Google"}
+        
+        # Create deployment service with user's credentials
+        # Parse scopes from JSON string format
+        try:
+            scopes = json.loads(tokens.scopes) if tokens.scopes else []
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to split if not JSON format
+            scopes = tokens.scopes.split(",") if tokens.scopes else []
+        
+        credentials = {
+            "token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "scopes": scopes
+        }
+        
+        deployment_service = ImprinterDeploymentService(credentials)
+        result = await deployment_service.check_spy_status(spreadsheet_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in check_spy_status endpoint: {e}", exc_info=True)
+        return {"deployed": False, "error": str(e)}
+
+# ============================================================================
+# PHASE 4: FINAL INTEGRATION ENDPOINT
+# ============================================================================
+
+class StartImprintingRequest(BaseModel):
+    spreadsheet_id: str
+    user_id: str
+
+@app.post("/imprinter/start-session")
+async def start_imprinting_session(request: StartImprintingRequest):
+    """
+    Endpoint called by the frontend when a teacher wants to start imprinting.
+    It deploys the spy script to the target spreadsheet.
+    
+    This is the final integration endpoint that connects the UI to the backend service.
+    """
+    try:
+        # 1. Get the teacher's stored OAuth credentials from the database
+        async with get_db() as db:
+            tokens = await get_user_tokens(db, request.user_id)
+            
+            if not tokens:
+                raise HTTPException(status_code=401, detail="User not authenticated with Google")
+            
+            # Refresh token if needed
+            valid_token = await get_valid_access_token(db, request.user_id)
+            if not valid_token:
+                raise HTTPException(status_code=401, detail="Unable to refresh access token")
+        
+        # 2. Prepare credentials for the deployment service
+        credentials = {
+            "token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "scopes": tokens.scopes.split(",") if tokens.scopes else []
+        }
+        
+        # 3. Instantiate and run the deployment service
+        deployment_service = ImprinterDeploymentService(credentials)
+        result = await deployment_service.deploy_spy(request.spreadsheet_id)
+        
+        # 4. Return the result to the frontend
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result.get("error"))
+        
+        # Log successful deployment
+        logger.info(f"Imprinting session started for user {request.user_id} on spreadsheet {request.spreadsheet_id}")
+        
+        return {"message": "Imprinting session started. The sheet is now being monitored."}
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error in start_imprinting_session endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start imprinting session: {str(e)}")
