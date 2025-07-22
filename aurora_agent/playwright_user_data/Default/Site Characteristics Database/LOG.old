@@ -1,2 +1,3 @@
-2025/07/18-15:07:52.383 3bdcea Creating DB /Users/arastu/Desktop/session-bubble/aurora_agent/playwright_user_data/Default/Site Characteristics Database since it was missing.
-2025/07/18-15:07:52.392 3bdcea Reusing MANIFEST /Users/arastu/Desktop/session-bubble/aurora_agent/playwright_user_data/Default/Site Characteristics Database/MANIFEST-000001
+2025/07/22-14:05:37.782 2d3c36 Reusing MANIFEST /Users/drsudhanshu/Desktop/bidirectionalflow/session-bubble/aurora_agent/playwright_user_data/Default/Site Characteristics Database/MANIFEST-000001
+2025/07/22-14:05:37.782 2d3c36 Recovering log #3
+2025/07/22-14:05:37.783 2d3c36 Reusing old log /Users/drsudhanshu/Desktop/bidirectionalflow/session-bubble/aurora_agent/playwright_user_data/Default/Site Characteristics Database/000003.log 

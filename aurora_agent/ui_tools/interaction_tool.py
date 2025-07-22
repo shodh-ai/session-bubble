@@ -94,7 +94,7 @@ async def generate_playwright_code(page: Page, user_prompt: str, element_info_li
     Selects the correct prompt, formats it with context, and calls the LLM.
     """
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     
     # 1. Select the specialized prompt template based on the current page URL
     prompt_template = get_prompt_for_application(page.url)

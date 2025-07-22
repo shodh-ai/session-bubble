@@ -12,7 +12,7 @@ from .jupyter_parser import JupyterParser
 PARSER_REGISTRY = [
     (re.compile(r"https://docs\.google\.com/spreadsheets/"), SheetsParser),
     (re.compile(r"https://docs\.google\.com/document/"), DocsParser),
-    (re.compile(r"/vscode/workbench/notebook/"), JupyterParser),
+    (re.compile(r"/lab$"), JupyterParser),
 ]
 DEFAULT_PARSER = GenericParser
 

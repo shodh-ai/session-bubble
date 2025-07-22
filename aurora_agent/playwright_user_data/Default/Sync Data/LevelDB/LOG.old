@@ -1,2 +1,3 @@
-2025/07/18-15:07:52.361 3bdcd7 Creating DB /Users/arastu/Desktop/session-bubble/aurora_agent/playwright_user_data/Default/Sync Data/LevelDB since it was missing.
-2025/07/18-15:07:52.390 3bdcd7 Reusing MANIFEST /Users/arastu/Desktop/session-bubble/aurora_agent/playwright_user_data/Default/Sync Data/LevelDB/MANIFEST-000001
+2025/07/22-14:05:37.764 2d3c36 Reusing MANIFEST /Users/drsudhanshu/Desktop/bidirectionalflow/session-bubble/aurora_agent/playwright_user_data/Default/Sync Data/LevelDB/MANIFEST-000001
+2025/07/22-14:05:37.779 2d3c36 Recovering log #3
+2025/07/22-14:05:37.779 2d3c36 Reusing old log /Users/drsudhanshu/Desktop/bidirectionalflow/session-bubble/aurora_agent/playwright_user_data/Default/Sync Data/LevelDB/000003.log 
