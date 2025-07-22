@@ -1,7 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
+*$pyclass
 
 # C extensions
 *.so
@@ -9,6 +9,8 @@ venv
 
 # Sensitive files
 .env
+.env.*
+!*.env.example
 *.json
 *.key
 *.pem
@@ -18,10 +20,55 @@ venv
 *.pfx
 *.p7b
 *.gpg
-*auth*.json
+*auth*
 *credential*
 *secret*
 *account*
+*.db
+*.sqlite3
+
+# Local development
+.venv
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Playwright
+playwright_user_data/
+
+# Logs
+logs/
+*.log
+
+# Local development
+local_settings.py
+
+# Database
+aurora_agent.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# VS Code
+*.code-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
 # Distribution / packaging
 .Python
 build/
