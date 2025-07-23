@@ -1,44 +1,50 @@
 import logging
 import asyncio
-# Import the two "primitive" tools that this workflow will orchestrate.
-from ..ui_interaction.recorded_script_tool import run_recorded_ui_script
-from ..ui_interaction.code_generator import generate_and_type_python_code
+
+# Import the two "primitive" tools that this workflow will use.
+from aurora_agent.tools.ui_interaction.recorded_script_tool import run_recorded_ui_script
+from aurora_agent.tools.ui_interaction.code_generator import generate_and_type_python_code
+
+# --- THIS IS THE NEW IMPORT ---
+# We now also import our new, powerful "reading" tool.
+from aurora_agent.tools.jupyter.notebook_parser_tool import get_notebook_state
 
 logger = logging.getLogger(__name__)
 
 async def write_and_run_code(prompt_for_code_gen: str) -> str:
     """
-    The champion workflow. It narrates its actions, types the code,
-    pauses, re-focuses the cell, and then executes it.
+    The complete "scientist" workflow. It generates code, types it,
+    runs the cell, AND then immediately reads the output to report the result.
     """
-    logger.info(f"--- WORKFLOW: Starting 'Write and Run Code' ---")
+    logger.info(f"--- WORKFLOW: Starting 'Write, Run, and Read' ---")
     
-    # --- Step 1: Narrate the "Thinking" Time ---
-    # This addresses the "it took so much time" feeling.
-    # A real implementation would send this to the UI via WebSocket/RPC.
-    # For now, we log it.
-    print("AGENT NARRATION: 'Okay, I will write the Python code for that now. One moment...'")
-    
-    # --- Step 2: Generate and Type the Code ---
+    # --- Step 1: Generate and Type the Code (No change) ---
     typing_result = await generate_and_type_python_code(prompt_for_code_gen)
-    
-    # --- Step 3: VERIFY ---
     if "Error" in typing_result:
-        logger.error(f"WORKFLOW FAILED at typing step. Aborting. Reason: {typing_result}")
         return typing_result
     
-    # --- Step 4: Pedagogical Pause ---
-    print("AGENT NARRATION: 'I've typed the code. Now, I will run the cell.'")
-    await asyncio.sleep(2) # Pause so the student can see the code.
+    await asyncio.sleep(2) # Pedagogical pause
     
-    # --- Step 5: Run the Cell ---
+    # --- Step 2: Run the Cell (No change) ---
     run_result = await run_recorded_ui_script("jupyter_run_current_cell")
-    
-    # --- Step 6: FINAL VERIFICATION ---
-    # This is the crucial fix for the silent failure.
     if "Error" in run_result:
-        logger.error(f"WORKFLOW FAILED at run step. Reason: {run_result}")
         return run_result
+    
+    # Give the kernel a moment to execute and render the output
+    await asyncio.sleep(1)
 
-    logger.info("WORKFLOW: 'Write and Run Code' completed successfully.")
-    return "Success: The code was generated, typed, and the cell was executed."
+    # --- Step 3: READ THE OUTPUT (The New, Critical Step) ---
+    logger.info("WORKFLOW: Code executed. Now, reading the output...")
+    read_result = await get_notebook_state()
+    if "Error" in read_result:
+        return read_result # Propagate the error if reading fails
+
+    # In a real system, we would send this rich JSON back to an LLM for summarization.
+    # For our MVP, we can just return the raw result.
+    final_report = (
+        "Success: The code was generated, typed, and the cell was executed.\n"
+        f"Here is the new state of the notebook:\n{read_result}"
+    )
+    
+    logger.info("WORKFLOW: 'Write, Run, and Read' completed successfully.")
+    return final_report
