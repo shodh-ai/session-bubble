@@ -1,8 +1,15 @@
 # Recorded actions for: colab_run_current_cell.py
 
 await page.get_by_text('Python (Pyodide)').first.click()
-await page.get_by_role('textbox').locator('div').click()
+await page.get_by_text('import pandas as pd').click()
+await page.get_by_text('import pandas as pd').dblclick()
+await page.get_by_text('import pandas as pd').click()
+await page.get_by_text('import pandas as pd').click()
+await page.get_by_role('textbox').filter(has_text='import pandas as pd').press('ControlOrMeta+a')
+await page.get_by_role('textbox').filter(has_text='import pandas as pd').press('ControlOrMeta+x')
+await page.get_by_role('button', name='Delete this cell (D, D)').click()
+await page.get_by_role('textbox').locator('div').dblclick()
 await page.get_by_role('button', name='Run this cell and advance').click()
-await page.get_by_label('Code Cell Content', exact=True).get_by_role('textbox').click()
+await page.get_by_role('button', name='Restart the kernel and run').click()
 page.once('dialog', lambda dialog: dialog.dismiss())
-await page.get_by_label('Main Content').get_by_text('Untitled.ipynb').click()
+await page.get_by_role('button', name='Cancel Kernel Restart').click()
