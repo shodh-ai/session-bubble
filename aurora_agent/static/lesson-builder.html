@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Agent - Interactive Lesson Builder</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; }
+        .header { background: linear-gradient(135deg, #4285f4, #34a853); color: white; padding: 20px; text-align: center; }
+        .main-container { display: flex; height: calc(100vh - 120px); gap: 20px; padding: 20px; }
+        .left-panel, .right-panel { flex: 1; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; }
+        .panel-header { background: #f8f9fa; padding: 20px; border-bottom: 2px solid #e9ecef; font-weight: 600; font-size: 1.1rem; }
+        .panel-content { flex: 1; overflow-y: auto; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; margin-right: 10px; }
+        .btn-primary { background: #4285f4; color: white; }
+        .btn-success { background: #34a853; color: white; }
+        .btn-danger { background: #ea4335; color: white; }
+        .connection-controls { padding: 20px; border-bottom: 1px solid #eee; }
+        .control-group { margin-bottom: 15px; }
+        .control-group input { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; }
+        .ai-thinking-box { background: #f8f9fa; border-left: 4px solid #4285f4; padding: 15px 20px; margin: 20px; border-radius: 8px; }
+        .action-item { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 10px; position: relative; }
+        .add-to-lesson-btn { position: absolute; top: 15px; right: 15px; background: #34a853; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .lesson-step { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 15px; cursor: move; }
+        .step-narration { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px; resize: vertical; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 Aurora Agent - Interactive Lesson Builder</h1>
+        <p>Capture live interactions and build comprehensive lesson plans</p>
+    </div>
+    
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="panel-header">📡 Live Verification Session</div>
+            <div class="connection-controls">
+                <div class="control-group">
+                    <label>Connection Status: <span id="connectionStatus">Disconnected</span></label>
+                </div>
+                <div class="control-group">
+                    <input type="url" id="spreadsheetUrl" placeholder="Google Spreadsheet URL">
+                </div>
+                <div class="control-group">
+                    <button id="connectBtn" class="btn btn-primary">Connect</button>
+                    <button id="startSessionBtn" class="btn btn-success" disabled>Start Session</button>
+                    <button id="stopSessionBtn" class="btn btn-danger" disabled>Stop Session</button>
+                </div>
+            </div>
+            <div class="ai-thinking-box">
+                <div>🤔 What is the AI thinking?</div>
+                <div id="aiThinkingContent">Waiting for interactions...</div>
+            </div>
+            <div class="panel-content">
+                <div id="liveActions" style="padding: 20px;">
+                    <div class="empty-state">Start session to see live actions</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="panel-header">📚 Lesson Plan Builder</div>
+            <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                <input type="text" id="lessonTitle" placeholder="Enter lesson title..." style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; margin-bottom: 15px;">
+                <div>Steps: <span id="stepCount">0</span> | Last saved: <span id="lastSaved">Never</span></div>
+            </div>
+            <div class="panel-content">
+                <div id="lessonSteps" style="padding: 20px;">
+                    <div class="empty-state">Add actions to build lesson plan</div>
+                </div>
+            </div>
+            <div style="padding: 20px; border-top: 1px solid #eee; background: #f8f9fa;">
+                <button id="saveLessonBtn" class="btn btn-success" disabled>💾 Save Lesson</button>
+                <button id="loadLessonBtn" class="btn btn-primary">📂 Load Lesson</button>
+                <button id="clearLessonBtn" class="btn btn-danger">🗑️ Clear All</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="lesson-builder.js?v=1737634110"></script>
+</body>
+</html>

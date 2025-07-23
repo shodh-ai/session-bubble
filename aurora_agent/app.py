@@ -5,14 +5,13 @@ import os
 import json
 from datetime import datetime
 import secrets
-from google.adk.runners import Runner
-from google.adk.sessions.in_memory_session_service import InMemorySessionService
-from google.adk.events.event import Event
-from google.genai.types import Content, Part
-from aurora_agent.tools.sheets import get_sheets_tool_instance  # Factory function to get SheetsTool instance
-from aurora_agent.ui_tools.interaction_tool import live_ui_interaction_tool # The real UI tool
-# Import the brain you built
-from .agent_brains.root_agent import root_agent
+
+# Core FastAPI and database imports
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import the browser manager
 from .browser_manager import browser_manager
@@ -605,3 +604,149 @@ async def start_imprinting_session(request: StartImprintingRequest):
     except Exception as e:
         logger.error(f"Error in start_imprinting_session endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start imprinting session: {str(e)}")
+
+
+# ============================================================================
+# NEW VERIFICATION SESSION ENDPOINTS (Playwright + VLM + API)
+# ============================================================================
+
+from .session_core import get_or_create_session, cleanup_session
+
+class VerificationSessionRequest(BaseModel):
+    user_id: str
+    spreadsheet_url: str
+
+@app.post("/verification/start")
+async def start_verification_session(request: VerificationSessionRequest):
+    """
+    Start a new verification session using Playwright + VLM + API approach.
+    
+    This replaces the complex Apps Script method with a simpler, more reliable approach:
+    1. Capture all user interactions with Playwright
+    2. Translate raw events to meaningful actions with VLM
+    3. Verify actions with Google Sheets API
+    4. Present verified actions in real-time via WebSocket
+    """
+    try:
+        logger.info(f"Starting verification session for user {request.user_id}")
+        
+        # Note: Session will be created when WebSocket connects
+        # This endpoint just validates the request and returns success
+        
+        return {
+            "success": True,
+            "message": "Verification session ready. Connect via WebSocket to begin.",
+            "user_id": request.user_id,
+            "spreadsheet_url": request.spreadsheet_url
+        }
+        
+    except Exception as e:
+        logger.error(f"Error starting verification session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.websocket("/ws/session/{user_id}")
+async def verification_websocket(websocket: WebSocket, user_id: str):
+    """
+    WebSocket endpoint for real-time verification session communication.
+    
+    Handles:
+    - Session start/stop commands
+    - Real-time interaction capture and verification
+    - Status updates and verified action delivery
+    """
+    await websocket.accept()
+    session = None
+    
+    try:
+        logger.info(f"WebSocket connected for verification session: {user_id}")
+        
+        # Get or create session
+        session = await get_or_create_session(user_id, websocket)
+        
+        # Send connection confirmation
+        await websocket.send_json({
+            "type": "CONNECTION_ESTABLISHED",
+            "message": "Verification session WebSocket connected",
+            "user_id": user_id
+        })
+        
+        # Listen for commands
+        while True:
+            try:
+                data = await websocket.receive_json()
+                command = data.get("command")
+                
+                if command == "START_SESSION":
+                    spreadsheet_url = data.get("spreadsheet_url")
+                    if not spreadsheet_url:
+                        await websocket.send_json({
+                            "type": "ERROR",
+                            "message": "Missing spreadsheet_url"
+                        })
+                        continue
+                    
+                    result = await session.start_session(spreadsheet_url)
+                    await websocket.send_json({
+                        "type": "SESSION_START_RESULT",
+                        "result": result
+                    })
+                    
+                elif command == "STOP_SESSION":
+                    await session.stop_session()
+                    await websocket.send_json({
+                        "type": "SESSION_STOPPED",
+                        "message": "Verification session stopped"
+                    })
+                    
+                elif command == "GET_STATUS":
+                    status = await session.get_session_status()
+                    await websocket.send_json({
+                        "type": "SESSION_STATUS",
+                        "status": status
+                    })
+                    
+                else:
+                    await websocket.send_json({
+                        "type": "ERROR",
+                        "message": f"Unknown command: {command}"
+                    })
+                    
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"Error in verification WebSocket: {e}")
+                await websocket.send_json({
+                    "type": "ERROR",
+                    "message": str(e)
+                })
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for user: {user_id}")
+    except Exception as e:
+        logger.error(f"Error in verification WebSocket: {e}")
+    finally:
+        # Cleanup session when WebSocket disconnects
+        if session:
+            await cleanup_session(user_id)
+
+@app.get("/verification/status/{user_id}")
+async def get_verification_status(user_id: str):
+    """
+    Get the current status of a user's verification session.
+    """
+    try:
+        from .session_core import active_sessions
+        
+        if user_id not in active_sessions:
+            return {
+                "active": False,
+                "message": "No active verification session"
+            }
+        
+        session = active_sessions[user_id]
+        status = await session.get_session_status()
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error getting verification status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

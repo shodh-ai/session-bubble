@@ -18,9 +18,13 @@ def get_sheets_tool_instance():
     try:
         # Construct the full path if key_file_path is relative to the project root
         if not os.path.isabs(key_file_path):
-            # Assuming the test is run from the project root
-            project_root = os.getcwd()
-            key_file_path = os.path.join(project_root, key_file_path)
+            # Fix: The env var path is relative to the aurora_agent directory
+            # Since we're already in aurora_agent/, just use the relative path directly
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up to aurora_agent/ directory (tools/sheets -> tools -> aurora_agent)
+            aurora_agent_root = os.path.dirname(os.path.dirname(current_dir))
+            key_file_path = os.path.join(aurora_agent_root, key_file_path)
+            print(f"DEBUG: Constructed service account path: {key_file_path}")
 
         api_client = SheetsAPIClient(key_file_path=key_file_path, spreadsheet_id=spreadsheet_id)
         return SheetsTool(client=api_client)
@@ -29,6 +33,6 @@ def get_sheets_tool_instance():
         return None
 
 # We also need to expose the interaction tool from this module if the agent uses it
-from ...ui_tools.interaction_tool import execute_interaction
+# from ...ui_tools.interaction_tool import execute_interaction  # Commented out for UAT
 
-__all__ = ['get_sheets_tool_instance', 'execute_interaction']
+__all__ = ['get_sheets_tool_instance']  # Removed execute_interaction for UAT

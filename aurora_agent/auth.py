@@ -27,12 +27,14 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:8000/auth/google/call
 
 # Required scopes for Google Drive, Sheets, and Apps Script
 SCOPES = [
-    'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/drive', 
     'https://www.googleapis.com/auth/script.projects',
+    'https://www.googleapis.com/auth/script.scriptapp',
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile'
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file'  # Google is adding this automatically
 ]
 
 class GoogleOAuthManager:

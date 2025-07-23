@@ -23,10 +23,15 @@ class UserToken(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./aurora_agent.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aurora_agent.db")
+ASYNC_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./aurora_agent.db")
 
-# Async engine for FastAPI
-async_engine = create_async_engine(DATABASE_URL, echo=True)
+# Sync engine for lesson API
+engine = create_engine(DATABASE_URL, echo=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Async engine for FastAPI OAuth
+async_engine = create_async_engine(ASYNC_DATABASE_URL, echo=True)
 AsyncSessionLocal = sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -36,8 +41,17 @@ async def create_tables():
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-async def get_db():
-    """Dependency to get database session."""
+# Dependency for sync database sessions (for lesson API)
+def get_db_session():
+    """Get sync database session for dependency injection."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+async def get_async_db_session():
+    """Get async database session for dependency injection."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

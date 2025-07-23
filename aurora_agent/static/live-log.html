@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Agent - Lesson Plan Builder</title>
+    <!-- Sortable.js for drag-and-drop functionality -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4285f4, #34a853);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        /* Task 3.1: The "What is the AI thinking?" Box */
+        .ai-thinking-box {
+            background: #f8f9fa;
+            border-left: 4px solid #4285f4;
+            padding: 15px;
+            margin: 15px;
+            border-radius: 8px;
+            min-height: 60px;
+            transition: all 0.3s ease;
+        }
+        
+        .ai-thinking-box.active {
+            background: #e3f2fd;
+            border-left-color: #2196f3;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+        }
+        
+        .ai-thinking-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .ai-thinking-content {
+            color: #666;
+            font-size: 0.85rem;
+            font-style: italic;
+        }
+        
+        /* Connection Status */
+        .connection-status {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .status {
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+        
+        .status.connected {
+            background: #e8f5e8;
+            color: #2e7d2e;
+            border: 1px solid #4caf50;
+        }
+        
+        .status.disconnected {
+            background: #ffeaea;
+            color: #c62828;
+            border: 1px solid #f44336;
+        }
+        
+        .status.active {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 1px solid #2196f3;
+        }
+        
+        /* Session Controls */
+        .session-controls {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .input-group {
+            margin-bottom: 12px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+            font-size: 0.8rem;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #4285f4;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #4285f4, #34a853);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(66, 133, 244, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ea4335, #d93025);
+        }
+        
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+        
+        /* Task 3.2: The "Verified Action" Log */
+        .verified-actions-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .log-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .log-entry {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .log-entry.success {
+            border-left: 4px solid #4caf50;
+            background: #f1f8e9;
+        }
+        
+        .log-entry.failed {
+            border-left: 4px solid #f44336;
+            background: #ffebee;
+        }
+        
+        .log-entry.error {
+            border-left: 4px solid #ff9800;
+            background: #fff3e0;
+        }
+        
+        .log-entry:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        
+        .action-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .action-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9rem;
+        }
+        
+        .action-status {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .action-status.success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .action-status.failed {
+            background: #f44336;
+            color: white;
+        }
+        
+        .action-status.error {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .verification-text {
+            color: #666;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+        
+        .timestamp {
+            color: #999;
+            font-size: 0.7rem;
+        }
+        
+        /* Task 3.3: The Confirmation Step (For Imprinting) */
+        .imprinting-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        
+        .btn-lesson {
+            background: linear-gradient(135deg, #34a853, #0f9d58);
+            font-size: 0.7rem;
+            padding: 4px 8px;
+        }
+        
+        .btn-discard {
+            background: linear-gradient(135deg, #ea4335, #d93025);
+            font-size: 0.7rem;
+            padding: 4px 8px;
+        }
+        
+        .imprinting-mode-toggle {
+            margin-bottom: 15px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #4285f4;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px 20px;
+        }
+        
+        .raw-events-toggle {
+            margin-top: 10px;
+        }
+        
+        .raw-event {
+            background: #f0f8ff;
+            border-left: 4px solid #2196f3;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="header">
+                <h1>🔍 Aurora Agent Live Log</h1>
+                <p>Real-time AI Analysis & Verification</p>
+            </div>
+            
+            <!-- Task 3.1: The "What is the AI thinking?" Box -->
+            <div class="ai-thinking-box" id="aiThinkingBox">
+                <div class="ai-thinking-title">🤖 What is the AI thinking?</div>
+                <div class="ai-thinking-content" id="aiThinkingContent">
+                    Move your mouse over elements to see AI analysis...
+                </div>
+            </div>
+            
+            <!-- Task 3.2: The "Verified Action" Log -->
+            <div class="verified-actions-log">
+                <div class="log-title">
+                    📋 Verified Actions Log
+                    <div class="imprinting-mode-toggle">
+                        <label style="font-size: 0.8rem; margin-right: 8px;">Imprinting Mode:</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="imprintingModeToggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="verifiedActionsContainer">
+                    <div class="empty-state">
+                        Connect to a session to see verified actions...
+                    </div>
+                </div>
+                
+                <div class="raw-events-toggle">
+                    <label>
+                        <input type="checkbox" id="showRawEvents"> Show Raw Events
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="header">
+                <h1>🎯 Session Control</h1>
+                <p>Phase 3: Live Log UI</p>
+            </div>
+            
+            <!-- Connection Status -->
+            <div class="connection-status">
+                <div id="connectionStatus" class="status disconnected">
+                    Disconnected - Click Connect to begin
+                </div>
+                <button id="connectBtn" class="btn">🔗 Connect</button>
+                <button id="disconnectBtn" class="btn btn-danger" disabled>❌ Disconnect</button>
+            </div>
+            
+            <!-- Session Controls -->
+            <div class="session-controls">
+                <div class="input-group">
+                    <label for="userIdInput">User ID:</label>
+                    <input type="text" id="userIdInput" value="default_teacher" placeholder="Enter user ID">
+                </div>
+                <div class="input-group">
+                    <label for="spreadsheetUrlInput">Spreadsheet URL:</label>
+                    <input type="text" id="spreadsheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/...">
+                </div>
+                <button id="startSessionBtn" class="btn" disabled>🚀 Start Session</button>
+                <button id="stopSessionBtn" class="btn btn-danger" disabled>⏹️ Stop</button>
+                <button id="clearLogBtn" class="btn">🗑️ Clear Log</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let websocket = null;
+        let isConnected = false;
+        let sessionActive = false;
+        let imprintingMode = false;
+        let showRawEvents = false;
+        let verifiedActions = [];
+        
+        // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const startSessionBtn = document.getElementById('startSessionBtn');
+        const stopSessionBtn = document.getElementById('stopSessionBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const userIdInput = document.getElementById('userIdInput');
+        const spreadsheetUrlInput = document.getElementById('spreadsheetUrlInput');
+        const aiThinkingBox = document.getElementById('aiThinkingBox');
+        const aiThinkingContent = document.getElementById('aiThinkingContent');
+        const verifiedActionsContainer = document.getElementById('verifiedActionsContainer');
+        const imprintingModeToggle = document.getElementById('imprintingModeToggle');
+        const showRawEventsToggle = document.getElementById('showRawEvents');
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            const userId = userIdInput.value.trim();
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+            
+            const wsUrl = `ws://localhost:8000/ws/session/${userId}`;
+            websocket = new WebSocket(wsUrl);
+            
+            websocket.onopen = function(event) {
+                isConnected = true;
+                updateConnectionStatus('connected', '✅ Connected - Ready for session');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                startSessionBtn.disabled = false;
+            };
+            
+            websocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            websocket.onclose = function(event) {
+                isConnected = false;
+                sessionActive = false;
+                updateConnectionStatus('disconnected', '❌ Disconnected');
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                startSessionBtn.disabled = true;
+                stopSessionBtn.disabled = true;
+            };
+            
+            websocket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+            }
+        }
+        
+        function startSession() {
+            const spreadsheetUrl = spreadsheetUrlInput.value.trim();
+            if (!spreadsheetUrl) {
+                alert('Please enter a Google Spreadsheet URL');
+                return;
+            }
+            
+            if (websocket && isConnected) {
+                websocket.send(JSON.stringify({
+                    command: 'START_SESSION',
+                    spreadsheet_url: spreadsheetUrl
+                }));
+            }
+        }
+        
+        function stopSession() {
+            if (websocket && isConnected) {
+                websocket.send(JSON.stringify({
+                    command: 'STOP_SESSION'
+                }));
+            }
+        }
+        
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'CONNECTION_ESTABLISHED':
+                    console.log('Connection established:', data.user_id);
+                    break;
+                    
+                case 'SESSION_START_RESULT':
+                    if (data.result.success) {
+                        sessionActive = true;
+                        updateConnectionStatus('active', '🎯 Session Active - Capturing interactions');
+                        startSessionBtn.disabled = true;
+                        stopSessionBtn.disabled = false;
+                        clearVerifiedActionsLog();
+                    } else {
+                        alert(`Failed to start session: ${data.result.error}`);
+                    }
+                    break;
+                    
+                case 'SESSION_STOPPED':
+                case 'SESSION_ENDED':
+                    sessionActive = false;
+                    updateConnectionStatus('connected', '✅ Connected - Session ended');
+                    startSessionBtn.disabled = false;
+                    stopSessionBtn.disabled = true;
+                    break;
+                    
+                case 'RAW_INTERACTION':
+                    if (showRawEvents) {
+                        addRawEventToLog(data.event);
+                    }
+                    break;
+                    
+                case 'HOVER_ANNOTATION':
+                    // Task 3.1: Update "What is the AI thinking?" box
+                    updateAIThinkingBox(data.element_description);
+                    break;
+                    
+                case 'VERIFIED_ACTION':
+                    // Task 3.2: Add to verified actions log
+                    addVerifiedActionToLog(data);
+                    break;
+                    
+                case 'ERROR':
+                    console.error('Session error:', data.message);
+                    break;
+                    
+                default:
+                    console.log('Unknown message type:', data.type, data);
+            }
+        }
+        
+        // Task 3.1: Update AI Thinking Box
+        function updateAIThinkingBox(description) {
+            aiThinkingContent.textContent = `You are hovering over: ${description}`;
+            aiThinkingBox.classList.add('active');
+            
+            // Remove active class after 2 seconds
+            setTimeout(() => {
+                aiThinkingBox.classList.remove('active');
+                aiThinkingContent.textContent = 'Move your mouse over elements to see AI analysis...';
+            }, 2000);
+        }
+        
+        // Task 3.2: Add Verified Action to Log
+        function addVerifiedActionToLog(actionData) {
+            const timestamp = new Date().toLocaleTimeString();
+            const statusClass = actionData.status ? actionData.status.toLowerCase() : 'success';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${statusClass}`;
+            logEntry.innerHTML = `
+                <div class="action-header">
+                    <div class="action-title">${actionData.interpretation || 'Unknown action'}</div>
+                    <div class="action-status ${statusClass}">${getStatusIcon(statusClass)} ${actionData.status || 'SUCCESS'}</div>
+                </div>
+                <div class="verification-text">
+                    AI Verification: ${actionData.verification || 'No verification available'}
+                </div>
+                <div class="timestamp">${timestamp}</div>
+                ${imprintingMode ? createImprintingActions(actionData) : ''}
+            `;
+            
+            // Add to beginning of log
+            const emptyState = verifiedActionsContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            verifiedActionsContainer.insertBefore(logEntry, verifiedActionsContainer.firstChild);
+            verifiedActions.unshift(actionData);
+            
+            // Limit to 50 entries
+            if (verifiedActions.length > 50) {
+                const lastEntry = verifiedActionsContainer.lastElementChild;
+                if (lastEntry && !lastEntry.classList.contains('empty-state')) {
+                    lastEntry.remove();
+                    verifiedActions.pop();
+                }
+            }
+        }
+        
+        // Task 3.3: Create Imprinting Actions
+        function createImprintingActions(actionData) {
+            return `
+                <div class="imprinting-actions">
+                    <button class="btn btn-lesson btn-small" onclick="addToLesson('${actionData.timestamp}')">
+                        📚 Add to Lesson
+                    </button>
+                    <button class="btn btn-discard btn-small" onclick="discardAction('${actionData.timestamp}')">
+                        🗑️ Discard
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Task 3.3: Imprinting Actions
+        function addToLesson(timestamp) {
+            const action = verifiedActions.find(a => a.timestamp === timestamp);
+            if (action) {
+                console.log('Adding to lesson:', action);
+                // TODO: Send to lesson builder API
+                alert(`Action added to lesson: ${action.interpretation}`);
+            }
+        }
+        
+        function discardAction(timestamp) {
+            const actionElement = document.querySelector(`[data-timestamp="${timestamp}"]`);
+            if (actionElement) {
+                actionElement.style.opacity = '0.5';
+                actionElement.style.textDecoration = 'line-through';
+            }
+            console.log('Discarding action:', timestamp);
+        }
+        
+        function addRawEventToLog(event) {
+            const rawEvent = document.createElement('div');
+            rawEvent.className = 'raw-event';
+            rawEvent.textContent = `${event.type}: ${JSON.stringify(event, null, 2)}`;
+            verifiedActionsContainer.appendChild(rawEvent);
+        }
+        
+        function getStatusIcon(status) {
+            switch (status) {
+                case 'success': return '✅';
+                case 'failed': return '❌';
+                case 'error': return '⚠️';
+                default: return '✅';
+            }
+        }
+        
+        function updateConnectionStatus(status, message) {
+            connectionStatus.className = `status ${status}`;
+            connectionStatus.textContent = message;
+        }
+        
+        function clearVerifiedActionsLog() {
+            verifiedActionsContainer.innerHTML = '<div class="empty-state">Waiting for verified actions...</div>';
+            verifiedActions = [];
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        startSessionBtn.addEventListener('click', startSession);
+        stopSessionBtn.addEventListener('click', stopSession);
+        clearLogBtn.addEventListener('click', clearVerifiedActionsLog);
+        
+        imprintingModeToggle.addEventListener('change', function() {
+            imprintingMode = this.checked;
+            // Refresh the log to show/hide imprinting actions
+            const entries = document.querySelectorAll('.log-entry');
+            entries.forEach(entry => {
+                const actions = entry.querySelector('.imprinting-actions');
+                if (imprintingMode && !actions) {
+                    // Add imprinting actions if not present
+                    const timestamp = entry.querySelector('.timestamp').textContent;
+                    const actionsHTML = createImprintingActions({timestamp});
+                    entry.insertAdjacentHTML('beforeend', actionsHTML);
+                } else if (!imprintingMode && actions) {
+                    // Remove imprinting actions
+                    actions.remove();
+                }
+            });
+        });
+        
+        showRawEventsToggle.addEventListener('change', function() {
+            showRawEvents = this.checked;
+            if (!showRawEvents) {
+                // Remove existing raw events
+                const rawEvents = document.querySelectorAll('.raw-event');
+                rawEvents.forEach(event => event.remove());
+            }
+        });
+    </script>
+</body>
+</html>
