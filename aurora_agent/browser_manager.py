@@ -25,14 +25,33 @@ class BrowserManager:
 
         logger.info(f"Initializing Playwright and launching browser (headless={headless})...")
         self.playwright_instance = await async_playwright().start()
-        self.browser_instance = await self.playwright_instance.chromium.launch(headless=headless)
+        
+        # Configure browser launch args for better VNC display
+        launch_args = []
+        if not headless:
+            launch_args.extend([
+                '--start-maximized',
+                '--window-size=1280,720',
+                '--window-position=0,0',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor'
+            ])
+        
+        self.browser_instance = await self.playwright_instance.chromium.launch(
+            headless=headless,
+            args=launch_args
+        )
         
         # Create a single, authenticated context if auth file exists
         auth_file_path = 'auth.json'
+        context_options = {
+            'viewport': {'width': 1280, 'height': 720} if not headless else None
+        }
+        
         if os.path.exists(auth_file_path):
-            self.context = await self.browser_instance.new_context(storage_state=auth_file_path)
-        else:
-            self.context = await self.browser_instance.new_context()
+            context_options['storage_state'] = auth_file_path
+            
+        self.context = await self.browser_instance.new_context(**context_options)
         
         logger.info("Browser and context started successfully.")
 

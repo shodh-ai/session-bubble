@@ -23,7 +23,8 @@ class UserToken(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./aurora_agent.db")
+DATABASE_PATH = os.getenv("DATABASE_PATH", "/tmp/aurora_agent.db")
+DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 
 # Async engine for FastAPI
 async_engine = create_async_engine(DATABASE_URL, echo=True)

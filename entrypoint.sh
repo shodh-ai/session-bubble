@@ -3,9 +3,9 @@ set -e
 
 # --- Configuration ---
 XVFB_DISPLAY=":99"
-# This resolution is better for modern web pages
-XVFB_WHD="1920x1080x24"
-VNC_CLIP_GEOMETRY="1920x1080"
+# Use a resolution that matches typical browser viewports
+XVFB_WHD="1280x720x24"
+VNC_CLIP_GEOMETRY="1280x720"
 VNC_PORT="6901"
 
 # --- Start Virtual Framebuffer (Xvfb) ---
@@ -26,6 +26,13 @@ if [ $? -ne 0 ]; then
 fi
 echo "X server is ready."
 export DISPLAY=${XVFB_DISPLAY}
+
+# --- Start Window Manager ---
+# Start a lightweight window manager so browsers have proper window management
+echo "Starting window manager..."
+gosu appuser openbox --config-file /dev/null &
+WM_PID=$!
+sleep 2
 
 # --- Start Services ---
 echo "Starting x11vnc server on port ${VNC_PORT}..."

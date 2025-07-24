@@ -3,7 +3,6 @@ import logging
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 from .experts.docs_expert_agent import docs_expert_agent_stub
-from .experts.jupyter_expert_agent import jupyter_expert_agent
 # Import the specialist agent factory
 from .experts.sheets_expert_agent import get_expert_agent
 from google.adk.tools.agent_tool import AgentTool 
@@ -50,7 +49,6 @@ root_agent = Agent(
     tools=[
         AgentTool(sheets_expert_agent_instance),
         AgentTool(docs_expert_agent_stub),
-        AgentTool(jupyter_expert_agent),
         navigate_to_url_stub,  # simple function tool
     ]
 )
