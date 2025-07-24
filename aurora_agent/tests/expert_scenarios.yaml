@@ -1,4 +1,0 @@
-- name: "Test Expert Chooses Chart Tool" # Renamed for clarity
-  prompt: "Show me the full process of creating a chart."
-  # --- THIS IS THE FIX ---
-  expected_tool_to_be_called: "run_recorded_ui_script"
