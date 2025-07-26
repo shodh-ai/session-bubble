@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/recorded_scripts/create_chart_in_sheets.py
 # Recorded actions for: create_chart_in_sheets
 
 await page.get_by_role('menuitem', name='Insert').click()

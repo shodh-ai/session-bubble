@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/tools/ui_interaction/code_generator.py
 # in aurora_agent/tools/ui_interaction/code_generator
 import logging
 import os

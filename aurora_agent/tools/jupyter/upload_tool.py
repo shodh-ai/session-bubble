@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/tools/jupyter/upload_tool.py
 # in aurora_agent/tools/jupyter/upload_tool.py
 import logging
 import os

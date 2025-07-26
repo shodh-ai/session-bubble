@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/ui_tools/annotation_helpers.py
 # in aurora_agent/ui_tools/annotation_helpers.py
 from playwright.async_api import Page, Locator
 import logging

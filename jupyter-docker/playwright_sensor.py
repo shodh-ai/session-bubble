@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# File: session-bubble/jupyter-docker/playwright_sensor.py
 """
 Playwright Browser Sensor
 =========================

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# File: session-bubble/quick_test.py
 """
 Quick Test Script
 ================

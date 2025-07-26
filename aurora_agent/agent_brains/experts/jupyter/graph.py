@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/agent_brains/experts/jupyter/graph.py
 # in aurora_agent/agent_brains/experts/jupyter/graph.py
 from langgraph.graph import StateGraph, END
 from .state import JupyterExpertState

@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/recorded_scripts/colab_run_current_cell.py.py
 # Recorded actions for: colab_run_current_cell.py
 
 await page.get_by_text('Python (Pyodide)').first.click()

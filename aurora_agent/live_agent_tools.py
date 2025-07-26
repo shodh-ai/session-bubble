@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/live_agent_tools.py
 # in aurora_agent/live_agent_tools.py (THE FINAL, CORRECTED VERSION)
 
 from .browser_manager import browser_manager

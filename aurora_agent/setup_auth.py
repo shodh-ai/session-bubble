@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/setup_auth.py
 # in aurora_agent/setup_auth.py
 import asyncio
 from playwright.async_api import async_playwright

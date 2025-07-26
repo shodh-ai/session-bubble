@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/ui_tools/interaction_tool.py
 # in aurora_agent/ui_tools/interaction_tool.py (FINAL, CORRECTED VERSION)
 
 import asyncio

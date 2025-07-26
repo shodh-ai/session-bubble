@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/tools/jupyter/execution_tool.py
+
 import logging
 from aurora_agent.browser_manager import browser_manager
 

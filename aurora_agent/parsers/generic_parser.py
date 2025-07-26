@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/parsers/generic_parser.py
 # in aurora_agent/parsers/generic_parser.py
 from playwright.async_api import Page
 from typing import List, Dict, Any

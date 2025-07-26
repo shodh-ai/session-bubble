@@ -1,4 +1,4 @@
-# in aurora_agent/tools/jupyter/notebook_parser_tool.py
+# File: session-bubble/aurora_agent/tools/jupyter/notebook_parser_tool.py
 import logging
 import json
 import nbformat

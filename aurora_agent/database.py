@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/database.py
+
 """
 Database models and setup for Aurora Agent OAuth token storage.
 """

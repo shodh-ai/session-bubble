@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/recorded_scripts/create_jupyter.py
 # Recorded actions for: create_jupyter
 
 await page.locator('.view-line').click()

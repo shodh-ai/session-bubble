@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/browser_manager.py
 # in aurora_agent/browser_manager.py (FINAL, CORRECTED VERSION)
 import asyncio
 import traceback

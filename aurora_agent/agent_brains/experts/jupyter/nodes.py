@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/agent_brains/experts/jupyter/nodes.py
+
 from ....tools.jupyter.lesson_player import execute_lesson_script
 from .state import JupyterExpertState
 

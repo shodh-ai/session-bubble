@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# File: session-bubble/jupyter-docker/vnc_listener.py
 """
 VNC Listener for Browser Automation
 ===================================

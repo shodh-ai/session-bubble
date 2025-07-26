@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/auth.py
+
 """
 Google OAuth 2.0 authentication module for Aurora Agent.
 Handles teacher authentication and token management.

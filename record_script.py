@@ -1,3 +1,4 @@
+# File: session-bubble/record_script.py
 # in /session-bubble/record_script.py (FINAL, WORKING VERSION)
 import subprocess
 import os

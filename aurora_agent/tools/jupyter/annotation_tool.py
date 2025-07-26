@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/tools/jupyter/annotation_tool.py
 # Enhanced Jupyter tools for Teacher AI Application
 # Supports annotation, highlighting, and cross-cell navigation for pedagogical purposes
 

@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/agent_brains/experts/jupyter/state.py
 # in aurora_agent/agent_brains/experts/jupyter/state.py
 from typing import TypedDict, Optional, List, Dict, Any
 

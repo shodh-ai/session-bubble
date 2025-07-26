@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# File: session-bubble/test_jupyter_integration.py
 """
 Comprehensive Jupyter Integration Test
 =====================================

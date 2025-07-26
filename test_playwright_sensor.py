@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# File: session-bubble/test_playwright_sensor.py
 """
 Test Script for Playwright Sensor
 =================================

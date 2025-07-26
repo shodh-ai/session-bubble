@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/tools/jupyter/workflows.py
+
 import logging
 import asyncio
 

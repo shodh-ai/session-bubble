@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/tools/jupyter/lesson_player.py
 # in aurora_agent/tools/jupyter/lesson_player.py
 import logging
 import ast

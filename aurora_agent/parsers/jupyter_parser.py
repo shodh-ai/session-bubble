@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/parsers/jupyter_parser.py
 # in aurora_agent/parsers/jupyter_parser.py
 import logging
 from playwright.async_api import Page

@@ -1,3 +1,4 @@
+# File: session-bubble/aurora_agent/parsers/base_parser.py
 # in aurora_agent/parsers/base_parser.py
 from abc import ABC, abstractmethod
 from playwright.async_api import Page

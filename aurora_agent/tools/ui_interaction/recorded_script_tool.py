@@ -1,3 +1,5 @@
+# File: session-bubble/aurora_agent/tools/ui_interaction/recorded_script_tool.py
+
 import logging
 import os
 import json

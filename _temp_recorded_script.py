@@ -1,3 +1,5 @@
+# File: session-bubble/_temp_recorded_script.py
+
 import asyncio
 import re
 from playwright.async_api import Playwright, async_playwright, expect
