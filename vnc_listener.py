@@ -335,7 +335,7 @@ class VNCListener:
         finally:
             await self.cleanup()
     
-    async def handle_client(self, websocket: websockets.server.WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket, path):
         """Handle incoming WebSocket connections"""
         client_addr = websocket.remote_address
         logger.info(f"New client connected: {client_addr}")
