@@ -414,7 +414,7 @@ class SensorWebSocketServer:
         finally:
             await self.cleanup()
     
-    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket, path):
         """Handle incoming WebSocket connections from frontend"""
         client_addr = websocket.remote_address
         logger.info(f"Frontend client connected: {client_addr}")
