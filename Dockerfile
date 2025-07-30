@@ -6,14 +6,14 @@ ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright \
     PATH="/home/appuser/.local/bin:${PATH}" \
     PYTHONPATH="/home/appuser/app" \
-    DATABASE_PATH="/home/appuser/data/aurora_agent.db"
+    DATABASE_PATH="/home/appuser/data/aurora_agent.db" \
+    DISPLAY=":99"
 
 # --- ROOT-LEVEL SETUP ---
-# All commands in this section run as root, giving them full system access.
-
-# 1. Install all system dependencies.
+# 1. Install all system dependencies, INCLUDING supervisor.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl gnupg wget tini gosu unzip \
+    supervisor \
+    curl gnupg wget gosu unzip \
     xvfb dbus-x11 x11-utils x11vnc openbox \
     libgl1-mesa-glx libxtst6 libgtk-3-0 libasound2 libnss3 libxss1 libdrm2 \
     libatspi2.0-0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
@@ -21,40 +21,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Copy requirements file and install Python packages GLOBALLY.
-#    This is the key fix. We do this as root so packages are available to all users.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # 3. Install Playwright browsers and their OS dependencies as root.
 RUN playwright install-deps chromium && \
     playwright install chromium
 
-# --- NON-ROOT USER SETUP ---
-# Now that the system is fully prepared, we create and switch to our standard user.
+# 4. Copy the supervisor configuration file into the container.
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# 4. Create the non-root user and the application directory.
+# --- NON-ROOT USER SETUP ---
+# 5. Create the non-root user.
 RUN useradd --create-home --shell /bin/bash appuser
 
-# 5. Create database directory with proper permissions
+# 6. Explicitly set ownership of the entire home directory to the new user.
+RUN chown -R appuser:appuser /home/appuser
+
+# 7. Create database directory with proper permissions.
 RUN mkdir -p /home/appuser/data && chown -R appuser:appuser /home/appuser/data
 
 WORKDIR /home/appuser/app
 
-# 6. Copy the entire application source code and set its ownership to the new user.
-#    This is the final step where we add our own code.
+# 8. Copy the entire application source code and set its ownership to the new user.
 COPY --chown=appuser:appuser . .
 
-# 7. Switch to the non-root user. This is a security best practice.
-#    The entrypoint script will now start as this user by default (though gosu will handle it).
-USER appuser
-
 # --- FINAL CONFIGURATION ---
-# Expose ports
-EXPOSE 8000
+# Expose the VNC port (the python scripts bind to localhost, not exposed)
 EXPOSE 6901
 
-# Switch back to root ONLY to allow the entrypoint script to use 'gosu'.
-USER root
+USER appuser
 
-# Use tini to manage processes and execute the entrypoint script.
-ENTRYPOINT ["/usr/bin/tini", "--", "./entrypoint.sh"]
+# The main command to run the container. This starts supervisor,
+# which in turn starts all of your services as the 'appuser'.
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

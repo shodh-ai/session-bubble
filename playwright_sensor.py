@@ -46,18 +46,17 @@ logger = logging.getLogger('playwright_sensor')
 class BrowserInteractionSensor:
     """Monitors browser interactions using Playwright"""
     
-    def __init__(self, websocket_url: str = 'ws://localhost:8766'):
-        self.websocket_url = websocket_url
+    def __init__(self):
+        # self.websocket_url is no longer needed.
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.is_monitoring = False
         self.last_interaction_time = 0
-        self.interaction_throttle_ms = 100  # Throttle rapid events
-        
-        # Track monitored elements to avoid duplicate events
+        self.interaction_throttle_ms = 100
         self.monitored_elements: Set[str] = set()
+
     
     async def initialize(self):
         """Initialize Playwright and browser for monitoring"""
@@ -384,23 +383,24 @@ class BrowserInteractionSensor:
 class SensorWebSocketServer:
     """WebSocket server for sending sensor events to frontend"""
     
-    def __init__(self, host: str = 'localhost', port: int = 8766):
-        self.host = host
+    def __init__(self, port: int = 8766):
         self.port = port
+        # --- THIS IS THE CORRESPONDING FIX ---
+        # No need to pass a URL when creating the sensor.
         self.sensor = BrowserInteractionSensor()
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
-    
     async def start(self):
         """Start the sensor WebSocket server"""
-        logger.info(f"Starting sensor WebSocket server on {self.host}:{self.port}")
+        # Update the log message to be accurate
+        logger.info(f"Starting sensor WebSocket server on 0.0.0.0:{self.port}")
         
         try:
             # Initialize browser sensor
             await self.sensor.initialize()
             
-            # Start WebSocket server
-            async with websockets.serve(self.handle_client, self.host, self.port):
-                logger.info("Sensor WebSocket server started successfully")
+            # CHANGE #2: Hardcode '0.0.0.0' as the host
+            async with websockets.serve(self.handle_client, '0.0.0.0', self.port):
+                logger.info("Sensor WebSocket server started successfully on 0.0.0.0")
                 
                 # Start monitoring
                 await self.sensor.start_monitoring()
@@ -533,19 +533,20 @@ async def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Playwright Browser Interaction Sensor')
-    parser.add_argument('--host', default='localhost', help='Host to bind to (default: localhost)')
+    
+    # CHANGE #3: Remove the '--host' argument from the command-line parser
+    # parser.add_argument('--host', default='localhost', help='Host to bind to (default: localhost)')
     parser.add_argument('--port', type=int, default=8766, help='Port to bind to (default: 8766)')
     parser.add_argument('--log-level', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                        help='Log level (default: INFO)')
     parser.add_argument('--target-url', default='about:blank', help='Initial URL to monitor (default: about:blank)')
     
     args = parser.parse_args()
-    
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     
-    # Create and start sensor server
-    server = SensorWebSocketServer(args.host, args.port)
+    # CHANGE #4: Do not pass the 'host' argument when creating the server instance
+    server = SensorWebSocketServer(args.port)
     
     try:
         await server.start()

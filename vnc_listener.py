@@ -308,24 +308,25 @@ class BrowserAutomationHandler:
 class VNCListener:
     """Main VNC listener class"""
     
-    def __init__(self, host: str = 'localhost', port: int = 8765):
-        self.host = host
+    # --- CHANGE HERE: Remove the 'host' parameter ---
+    def __init__(self, port: int = 8765):
         self.port = port
         self.browser_handler = BrowserAutomationHandler()
         self.running = False
     
     async def start(self):
         """Start the VNC listener server"""
-        logger.info(f"Starting VNC listener on {self.host}:{self.port}")
+        # --- CHANGE HERE: Remove self.host from the log message ---
+        logger.info(f"Starting VNC listener on 0.0.0.0:{self.port}")
         self.running = True
         
         try:
             # Initialize browser
             await self.browser_handler.initialize()
             
-            # Start WebSocket server
-            async with websockets.serve(self.handle_client, self.host, self.port):
-                logger.info("VNC listener server started successfully")
+            # This line is already correct from your previous fix
+            async with websockets.serve(self.handle_client, '0.0.0.0', self.port):
+                logger.info("VNC listener server started successfully on 0.0.0.0")
                 await self.wait_for_shutdown()
                 
         except Exception as e:
@@ -397,7 +398,8 @@ async def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='VNC Listener for Browser Automation')
-    parser.add_argument('--host', default='localhost', help='Host to bind to (default: localhost)')
+    # --- CHANGE HERE: Remove the '--host' argument ---
+    # parser.add_argument('--host', default='localhost', help='Host to bind to (default: localhost)')
     parser.add_argument('--port', type=int, default=8765, help='Port to bind to (default: 8765)')
     parser.add_argument('--log-level', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                        help='Log level (default: INFO)')
@@ -407,8 +409,8 @@ async def main():
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     
-    # Create and start listener
-    listener = VNCListener(args.host, args.port)
+    # --- CHANGE HERE: Do not pass the host to the VNCListener constructor ---
+    listener = VNCListener(args.port)
     
     try:
         await listener.start()
