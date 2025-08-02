@@ -18,6 +18,7 @@ pydantic
 pytest-asyncio
 openai
 sqlalchemy
+aiohttp
 aiosqlite
 
 # Add any other specific libraries your agents might need

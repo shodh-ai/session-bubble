@@ -30,7 +30,7 @@ import websockets
 import websockets.server
 import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from playwright.async_api import async_playwright, Browser, Page, Playwright
 
 # Configure logging
@@ -51,6 +51,8 @@ class BrowserAutomationHandler:
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
+        self.pages: List[Page] = []  # Track all open pages/tabs
+        self.current_page_index: int = 0  # Track active page
         self.is_initialized = False
     
     async def initialize(self):
@@ -68,18 +70,28 @@ class BrowserAutomationHandler:
                     '--disable-gpu',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
-                    '--start-maximized'
+                    '--start-maximized',
+                    '--disable-popup-blocking',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-default-apps',
+                    '--no-first-run',
+                    '--disable-background-timer-throttling',
+                    '--disable-renderer-backgrounding',
+                    '--disable-backgrounding-occluded-windows'
                 ]
             )
             
-            # Create a new page
+            # Create the first page and track it
             self.page = await self.browser.new_page()
+            self.pages = [self.page]  # Track all pages
+            self.current_page_index = 0  # First page is active
             
-            # Set viewport size
-            await self.page.set_viewport_size({"width": 1280, "height": 720})
+            # Set viewport size to fill most of the VNC desktop (1024x768)
+            await self.page.set_viewport_size({"width": 1200, "height": 800})
             
             self.is_initialized = True
-            logger.info("Playwright browser initialized successfully")
+            logger.info("Playwright browser initialized successfully with tab management")
             
         except Exception as e:
             logger.error(f"Failed to initialize browser: {e}")
@@ -98,6 +110,56 @@ class BrowserAutomationHandler:
             logger.info("Browser cleanup completed")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+    
+    async def open_new_tab(self) -> str:
+        """Open a new tab within the same browser window using JavaScript"""
+        try:
+            # Use JavaScript to open a new tab in the same browser window
+            await self.page.evaluate("window.open('about:blank', '_blank')")
+            
+            # Wait a moment for the new tab to be created
+            await asyncio.sleep(1)
+            
+            # Get all pages in the browser context
+            context = self.page.context
+            all_pages = context.pages
+            
+            # Find the new page (should be the last one)
+            if len(all_pages) > len(self.pages):
+                new_page = all_pages[-1]
+                await new_page.set_viewport_size({"width": 1200, "height": 800})
+                self.pages.append(new_page)
+                self.current_page_index = len(self.pages) - 1
+                self.page = new_page  # Switch to the new tab
+                
+                logger.info(f"Opened new tab {self.current_page_index + 1}. Total tabs: {len(self.pages)}")
+                return f"Successfully opened new tab {self.current_page_index + 1}"
+            else:
+                return "Error: New tab was not created"
+                
+        except Exception as e:
+            logger.error(f"Failed to open new tab: {e}")
+            return f"Error opening new tab: {str(e)}"
+    
+    async def switch_to_tab(self, tab_index: int) -> str:
+        """Switch to a specific tab by index (1-based)"""
+        try:
+            # Convert to 0-based index
+            zero_based_index = tab_index - 1
+            
+            if zero_based_index < 0 or zero_based_index >= len(self.pages):
+                return f"Error: Tab {tab_index} does not exist. Available tabs: 1-{len(self.pages)}"
+            
+            # Switch to the specified page
+            self.current_page_index = zero_based_index
+            self.page = self.pages[zero_based_index]
+            await self.page.bring_to_front()
+            
+            logger.info(f"Switched to tab {tab_index}")
+            return f"Successfully switched to tab {tab_index}"
+        except Exception as e:
+            logger.error(f"Failed to switch to tab {tab_index}: {e}")
+            return f"Error switching to tab {tab_index}: {str(e)}"
     
     async def execute_action(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a browser action based on the message"""
@@ -130,6 +192,15 @@ class BrowserAutomationHandler:
                 result = await self._get_element(message)
             elif action == 'execute_script':
                 result = await self._execute_script(message)
+            elif action == 'execute_jupyter_command':
+                result = await self._execute_jupyter_command(message)
+            elif action == 'jupyter_click_pyodide':
+                result = await self._jupyter_click_pyodide(message)
+            elif action == 'open_new_tab':
+                result = await self.open_new_tab()
+            elif action == 'switch_to_tab':
+                tab_index = message.get('tab_index', 1)
+                result = await self.switch_to_tab(tab_index)
             else:
                 raise ValueError(f"Unknown action: {action}")
             
@@ -151,12 +222,25 @@ class BrowserAutomationHandler:
             }
     
     async def _navigate(self, message: Dict[str, Any]) -> str:
-        """Navigate to a URL"""
+        """Navigate to a URL using the current active page"""
         url = message.get('url')
         if not url:
             raise ValueError("URL is required for navigate action")
         
-        await self.page.goto(url, wait_until='domcontentloaded')
+        # Use the current active page (supports multi-tab navigation)
+        current_page = self.page
+        if not current_page:
+            raise ValueError("No active page available for navigation")
+        
+        # Navigate to the URL in the current active page
+        await current_page.goto(url, wait_until='domcontentloaded')
+        
+        # Bring the page to front for visibility
+        try:
+            await self.page.bring_to_front()
+        except Exception as e:
+            logger.warning(f"Could not bring page to front: {e}")
+        
         return f"Navigated to {url}"
     
     async def _click(self, message: Dict[str, Any]) -> str:
@@ -304,14 +388,68 @@ class BrowserAutomationHandler:
         
         result = await self.page.evaluate(script)
         return result
+    
+    async def _execute_jupyter_command(self, message: Dict[str, Any]) -> str:
+        """Execute individual Jupyter commands using the individual command executor"""
+        # Support both direct parameters and nested parameters format
+        tool_name = message.get('tool_name')
+        parameters = message.get('parameters', {})
+        
+        # If tool_name is not at top level, check if it's in parameters
+        if not tool_name and 'tool_name' in parameters:
+            tool_name = parameters.get('tool_name')
+            # Remove tool_name from parameters to avoid duplication
+            parameters = {k: v for k, v in parameters.items() if k != 'tool_name'}
+        
+        # Support flattened parameter format (parameters directly in message)
+        if not tool_name:
+            # Check for common Jupyter parameter patterns
+            if 'cell_index' in message or 'code' in message:
+                # This looks like a flattened Jupyter command
+                tool_name = message.get('action', '').replace('execute_jupyter_command', 'jupyter_type_in_cell')
+                parameters = {k: v for k, v in message.items() 
+                             if k not in ['action', 'timestamp']}
+        
+        if not tool_name:
+            raise ValueError("tool_name is required for execute_jupyter_command action")
+        
+        # Import the individual command executor
+        try:
+            from aurora_agent.tools.jupyter.individual_command_executor import execute_jupyter_command
+            result = await execute_jupyter_command(tool_name, parameters, self.page)
+            return result
+        except ImportError as e:
+            raise ValueError(f"Could not import Jupyter command executor: {e}")
+        except Exception as e:
+            raise ValueError(f"Error executing Jupyter command {tool_name}: {e}")
+    
+    async def _jupyter_click_pyodide(self, message: Dict[str, Any]) -> str:
+        """Click on the Python (Pyodide) kernel option"""
+        logger.info("Clicking Python (Pyodide) kernel option")
+        
+        try:
+            # Use the exact selector from the recorded script
+            await self.page.get_by_title("Python (Pyodide)").first.click()
+            return "Successfully clicked Python (Pyodide) kernel"
+        except Exception as e:
+            return f"Error clicking Python (Pyodide): {str(e)}"
+
+# Global shared browser handler to prevent multiple browser instances
+_global_browser_handler = None
+
+async def get_global_browser_handler():
+    """Get or create the global browser handler instance"""
+    global _global_browser_handler
+    if _global_browser_handler is None:
+        _global_browser_handler = BrowserAutomationHandler()
+        await _global_browser_handler.initialize()
+    return _global_browser_handler
 
 class VNCListener:
     """Main VNC listener class"""
     
-    # --- CHANGE HERE: Remove the 'host' parameter ---
     def __init__(self, port: int = 8765):
         self.port = port
-        self.browser_handler = BrowserAutomationHandler()
         self.running = False
     
     async def start(self):
@@ -321,8 +459,8 @@ class VNCListener:
         self.running = True
         
         try:
-            # Initialize browser
-            await self.browser_handler.initialize()
+            # Initialize global browser handler (shared across all connections)
+            await get_global_browser_handler()
             
             # This line is already correct from your previous fix
             async with websockets.serve(self.handle_client, '0.0.0.0', self.port):
@@ -335,10 +473,11 @@ class VNCListener:
         finally:
             await self.cleanup()
     
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket, path='/'):
         """Handle incoming WebSocket connections"""
         client_addr = websocket.remote_address
-        logger.info(f"New client connected: {client_addr}")
+        # path is now provided as a parameter by websockets library
+        logger.info(f"New client connected: {client_addr} on path: {path}")
         
         try:
             async for message in websocket:
@@ -347,8 +486,9 @@ class VNCListener:
                     data = json.loads(message)
                     logger.info(f"Received message from {client_addr}: {data}")
                     
-                    # Execute browser action
-                    response = await self.browser_handler.execute_action(data)
+                    # Execute browser action using global browser handler
+                    browser_handler = await get_global_browser_handler()
+                    response = await browser_handler.execute_action(data)
                     
                     # Send response back
                     await websocket.send(json.dumps(response))
