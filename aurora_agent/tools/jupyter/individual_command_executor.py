@@ -3,6 +3,7 @@
 import logging
 from typing import Dict, Any
 from .screenshot_feedback import send_action_feedback
+from .teacher_ai_utils import TeacherAI
 
 # Remove browser_manager dependency to prevent multiple browser instances
 # All page objects should be passed from the VNC listener's global browser handler
@@ -31,6 +32,17 @@ async def execute_jupyter_command(tool_name: str, parameters: Dict[str, Any], pa
         return "Error: No page provided. Page must be passed from VNC listener."
 
     try:
+        # Highlight the target cell if cell_number is provided in parameters
+        if 'cell_number' in parameters:
+            cell_number = parameters['cell_number']
+            concept_name = f"Executing {tool_name}"
+            try:
+                await TeacherAI.model_concept(cell_number, concept_name, f"Demonstrating {tool_name} on cell {cell_number}")
+                logger.info(f"Cell {cell_number} highlighted for command {tool_name}")
+            except Exception as highlight_error:
+                logger.warning(f"Failed to highlight cell {cell_number}: {highlight_error}")
+                # Continue with command execution even if highlighting fails
+        
         # Execute the command
         result = None
         if tool_name == "jupyter_type_in_cell":
