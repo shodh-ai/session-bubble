@@ -1,10 +1,12 @@
 name: Build and Deploy to GKE
 
 on:
+  # This workflow runs automatically on every push to the 'main' branch
   push:
     branches:
       - main
 
+# Define environment variables used throughout the workflow
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
   GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
@@ -17,62 +19,79 @@ jobs:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
 
-    # Add permissions for the new authentication method
+    # These permissions are required for the Google Cloud authentication action
     permissions:
       contents: "read"
       id-token: "write"
 
     steps:
+      # Step 1: Check out your repository's code so the workflow can access it
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # CORRECTED AUTHENTICATION FLOW
+      # Step 2: Authenticate to Google Cloud using the service account key
       - name: Authenticate to Google Cloud
-        id: auth
         uses: "google-github-actions/auth@v2"
         with:
-          # The input name is 'credentials_json', not 'service_account_key'
           credentials_json: "${{ secrets.GKE_SA_KEY }}"
 
-      - name: Set up gcloud CLI
-        uses: "google-github-actions/setup-gcloud@v2"
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-
-      # This step depends on the previous two steps succeeding
+      # Step 3: Configure kubectl to connect to your GKE cluster
       - name: Get GKE credentials
         uses: "google-github-actions/get-gke-credentials@v2"
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_ZONE }}
           project_id: ${{ env.PROJECT_ID }}
-          # The 'credentials' input is removed as it's now handled automatically
 
-      # Docker configuration now relies on the authenticated gcloud
-      - name: Configure Docker authentication
+      # Step 4: Apply Kubernetes configurations and create secrets
+      - name: Apply Kubernetes Configurations and Secrets
+        run: |
+          echo "Applying non-sensitive ConfigMap..."
+          kubectl apply -f k8s/configmap.yaml
+
+          echo "Creating or updating Kubernetes Secrets from GitHub Secrets..."
+          # This command creates the 'app-secrets' Secret for your API keys
+          kubectl create secret generic app-secrets \
+            --from-literal=GOOGLE_API_KEY='${{ secrets.GOOGLE_API_KEY }}' \
+            --from-literal=OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' \
+            --from-literal=GOOGLE_CLIENT_ID='${{ secrets.GOOGLE_CLIENT_ID }}' \
+            --from-literal=GOOGLE_CLIENT_SECRET='${{ secrets.GOOGLE_CLIENT_SECRET }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # This command creates the Secret for your main service account JSON file
+          kubectl create secret generic google-sa-key \
+            --from-literal=service-account-key.json='${{ secrets.GOOGLE_SA_KEY_JSON }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # This command creates the Secret for your docs API JSON file
+          kubectl create secret generic google-docs-api-key \
+            --from-literal=docs_api.json='${{ secrets.GOOGLE_DOCS_API_KEY_JSON }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Step 5: Configure Docker and push the image to Google Artifact Registry
+      - name: Build and Push Docker Image
         run: |
           gcloud auth configure-docker gcr.io --quiet
-
-      - name: Build Docker image
-        run: |
           docker build -t "gcr.io/$PROJECT_ID/$IMAGE:${{ github.sha }}" .
-
-      - name: Push Docker image
-        run: |
           docker push "gcr.io/$PROJECT_ID/$IMAGE:${{ github.sha }}"
 
-      # USING THE ROBUST DEPLOYMENT STRATEGY
-      - name: Deploy to GKE
+      # Step 6: Deploy the application to GKE using the deployment.yaml manifest
+      - name: Deploy Application
         run: |
-          # Make sure you have a k8s/deployment.yaml file in your repository!
-          # This command replaces the placeholder image tag with the real one
+          echo "Applying Kubernetes Deployment..."
+          # These 'sed' commands replace the placeholder image tag with the real one
           sed -i "s|:placeholder|:${{ github.sha }}|g" k8s/deployment.yaml
-
-          # This command replaces the placeholder project ID
           sed -i "s|gcr.io/your-gke-project-id|gcr.io/${PROJECT_ID}|g" k8s/deployment.yaml
 
-          # apply will create or update the deployment
+          # Apply the updated deployment manifest
           kubectl apply -f k8s/deployment.yaml
 
-          # Wait for the rollout to complete
+          echo "Waiting for deployment rollout to complete..."
           kubectl rollout status deployment/${DEPLOYMENT_NAME}
+
+      # Step 7: Expose the deployment with the Load Balancer Service
+      - name: Expose Deployment with a Service
+        run: |
+          echo "Applying Kubernetes Service to create Load Balancer..."
+          kubectl apply -f k8s/service.yaml
+          echo "Load Balancer provisioning has been initiated."

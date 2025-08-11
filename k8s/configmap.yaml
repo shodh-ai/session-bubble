@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  TEST_SPREADSHEET_ID: "1uE_mWeRnHyn18ED-v7yEwmf5SFl_qMPZOZxr1Zslcis"
+  TEST_SPREADSHEET_URL: "https://docs.google.com/spreadsheets/d/1uE_mWeRnHyn18ED-v7yEwmf5SFl_qMPZOZxr1Zslcis/edit"
+  TEST_DOC_ID: "1S5NqNkf80aYmFgEF_hK2wcJuDaVHvM_cAEV5BvOn3pA"
+  OPENAI_API_MODEL: "o4-mini-2025-04-16"
+  REDIRECT_URI: "http://localhost:8000/auth/google/callback"
+  DATABASE_URL: "sqlite+aiosqlite:///./aurora_agent.db"
