@@ -28,8 +28,7 @@ jobs:
           project_id: ${{ secrets.GKE_PROJECT }}
 
       - name: Configure Docker authentication
-        run: |
-          gcloud --quiet auth configure-docker
+        run: gcloud --quiet auth configure-docker
 
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
@@ -47,7 +46,14 @@ jobs:
         run: |
           docker push "gcr.io/$PROJECT_ID/$IMAGE:${{ github.sha }}"
 
-      - name: Deploy to GKE
+      - name: Deploy to GKE (Declarative)
         run: |
-          kubectl set image deployment/${DEPLOYMENT_NAME} ${IMAGE}=gcr.io/$PROJECT_ID/$IMAGE:${{ github.sha }}
+          # Replace the placeholder in the deployment manifest with the real image tag and project ID
+          sed -i "s|:placeholder|:${{ github.sha }}|g" k8s/deployment.yaml
+          sed -i "s|gcr.io/your-gke-project-id|gcr.io/${PROJECT_ID}|g" k8s/deployment.yaml
+
+          # Apply the manifest. This is idempotent and declarative.
+          kubectl apply -f k8s/deployment.yaml
+
+          # Wait for the rollout to complete
           kubectl rollout status deployment/${DEPLOYMENT_NAME}
