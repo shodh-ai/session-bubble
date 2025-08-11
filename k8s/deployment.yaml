@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # The name of your deployment. This must match the DEPLOYMENT_NAME in your deploy.yml
+  name: session-bubble
+  labels:
+    app: session-bubble
+spec:
+  # The desired number of pod replicas
+  replicas: 1
+  # The selector tells the Deployment which pods to manage. It must match the pod template's labels.
+  selector:
+    matchLabels:
+      app: session-bubble
+  template:
+    metadata:
+      # Labels applied to each pod created by this Deployment
+      labels:
+        app: session-bubble
+    spec:
+      containers:
+      - name: session-bubble # The name of the container inside the pod
+        # --- IMPORTANT ---
+        # This image path is a placeholder. Your CI/CD pipeline will replace it.
+        # It MUST match the pattern used in your deploy.yml 'sed' command.
+        image: gcr.io/your-gke-project-id/session-bubble:placeholder
+        ports:
+        # Expose the VNC port. The name is for easier reference (e.g., in a Service).
+        - name: vnc
+          containerPort: 6901
+        
+        # --- BEST PRACTICE: RESOURCE MANAGEMENT ---
+        # Define resource requests and limits to ensure stable cluster performance.
+        resources:
+          requests:
+            cpu: "250m"      # Request 0.25 of a CPU core
+            memory: "512Mi"  # Request 512 MiB of memory
+          limits:
+            cpu: "1"         # Limit to 1 full CPU core
+            memory: "1Gi"    # Limit to 1 GiB of memory
+            
+        # --- BEST PRACTICE: HEALTH CHECKS ---
+        # Probes tell Kubernetes if your app is healthy, ready, and has started.
+        # Since this is a VNC service, we'll use a TCP socket check on the VNC port.
+        startupProbe:
+          tcpSocket:
+            port: 6901
+          initialDelaySeconds: 15 # Wait 15s before starting probes
+          periodSeconds: 10
+          failureThreshold: 6     # Give it up to 60s (6*10) to start up
+
+        livenessProbe:
+          tcpSocket:
+            port: 6901
+          periodSeconds: 20       # Check every 20s
+          failureThreshold: 3     # Restart if 3 consecutive checks fail
+
+        readinessProbe:
+          tcpSocket:
+            port: 6901
+          periodSeconds: 10       # Check every 10s
+          failureThreshold: 3     # Mark as Unready if 3 checks fail
+          
+        # --- CONFIGURATION: ENVIRONMENT VARIABLES ---
+        # Explicitly define environment variables here. These will override defaults in the Dockerfile.
+        # This makes configuration clear and easy to manage with ConfigMaps or Secrets.
+        env:
+        - name: DISPLAY
+          value: ":99"
+        - name: DATABASE_PATH
+          value: "/home/appuser/data/aurora_agent.db"
+        # The other ENV vars (PYTHONPATH, etc.) are well-defined in the Dockerfile and don't need overrides here.
+        
+      # --- BEST PRACTICE: SECURITY CONTEXT ---
+      # Enforce running as the non-root user you created in the Dockerfile.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # The default UID for the first user created with 'useradd' is 1000
+
+      # Time given to the pod to shut down gracefully after receiving a SIGTERM signal.
+      terminationGracePeriodSeconds: 30
